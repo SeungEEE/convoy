@@ -47,12 +47,12 @@ adb -s emulator-5554 forward tcp:8088 tcp:8088   # Virtual Console: http://127.0
 
 ### 브랜치와 PR
 - `main`은 항상 빌드되는 상태다. 직접 커밋하지 않는다
-- 브랜치 이름: `feat/<이슈번호>-<이름>`, `fix/…`, `docs/…`, `chore/…`, `spike/…`, `release/…`
+- 브랜치 이름: `feat/<이름>`, `fix/…`, `docs/…`, `chore/…`, `spike/…`, `release/…`. 이슈를 만들었다면 `feat/<이슈번호>-<이름>`으로 쓴다(이슈는 큰 기능에만 권장)
 - 기능 하나 = 브랜치 하나 = PR 하나. 브랜치는 짧게 살고, 다른 작업 브랜치 위에 얹지 않는다
 - 규칙이 바뀌면 `docs/` 브랜치로 SPEC.md를 먼저 고쳐 머지한 뒤 구현한다. 명세·테스트 커밋과 구현 커밋은 나눈다
 - `spike/`는 머지하지 않는다. 결과만 `docs/sdk-findings.md`에 남긴다
 - Claude와 Codex는 브랜치 이름이 아니라 커밋의 공동 작성자 표기로 구분한다. 동시에 작업할 때는 `git worktree`로 폴더를 나눈다
-- PR은 `.github/pull_request_template.md`를 채워서 연다. 머지는 Rebase and merge를 쓴다
+- PR은 `.github/pull_request_template.md`를 채워서 연다. 머지는 Merge commit을 쓴다. Squash는 쓰지 않는다(테스트·구현 커밋 이력 보존). Rebase and merge도 쓰지 않는다(브랜치가 얹혀 있을 때 커밋 해시가 바뀌어 충돌한다)
 - 제출 시점에 태그를 단다(`v1-submit`, `v2-pt`)
 - **push와 머지는 하지 않는다.** 사람이 한다
 
