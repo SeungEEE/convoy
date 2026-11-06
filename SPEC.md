@@ -224,7 +224,7 @@ com.car.convoy
 ## 3장. 작업 목록
 작업 하나는 함수 하나다. 작업마다 테스트 먼저(사람), Red 확인, 구현(AI), Green 확인 순서다.
 
-- [ ] 작업 0. Compose가 Pleos 에뮬레이터에서 뜨는지 확인한다 (안 되면 XML로 전환하고 알린다)
+- [x] 작업 0. Compose가 Pleos 에뮬레이터에서 뜨는지 확인한다 (안 되면 XML로 전환하고 알린다)
 - [ ] 작업 1. `validateInviteCode` (R1, 7행)
 - [ ] 작업 2. `isInviteCodeExpired` (R1, 4행)
 - [ ] 작업 3. `visibleOnMap`, `canRequestFollow` (R2, 3행)
