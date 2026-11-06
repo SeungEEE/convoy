@@ -47,7 +47,13 @@
 - AVD `Pleos_Connect_v2.1.0`: API 34, Cold boot 필수(Quick boot면 차량 신호 불가), RAM 4GB, 화면 2560x1440 가로(왼쪽 차량 정보, 오른쪽 앱 영역)
 - Virtual Console: `adb forward tcp:8088 tcp:8088` 후 `http://127.0.0.1:8088/`의 Emulation Controls에서 기어, 방향지시등, 경고등 등을 바꾼다. 위치(GPS)와 차속 카드는 없다
 - **위치가 성남시 수정구 시흥동(37.4127, 127.0947)에 고정**이고 heading은 0이다. `adb emu geo fix`로 바꿔도 NaviHelper 위치는 변하지 않았다
-- 미확인: 에뮬레이터 2대 동시 실행, `onDestinationArrived` 실제 수신, `addWaypoint`, Compose 동작, 외부 네트워크 통신
+- 미확인: 에뮬레이터 2대 동시 실행, `onDestinationArrived` 실제 수신, `addWaypoint`, 외부 네트워크 통신
+
+## Compose (작업 0, 2026-11-06 확인)
+- **Jetpack Compose가 Pleos 에뮬레이터에서 동작한다.** 텍스트 렌더링과 버튼 클릭(상태 변경)을 확인했다
+- 설정: Kotlin 컴파일러 플러그인 `org.jetbrains.kotlin.plugin.compose` 2.2.10(AGP 9.2.1 내장 Kotlin과 일치), Compose BOM 2025.09.00, `androidx.activity:activity-compose:1.10.1`, Material3, `buildFeatures { compose = true }`
+- Activity는 `ComponentActivity` + `setContent`. 기존 `Theme.Convoy`(MaterialComponents)로도 문제없이 떴다
+- **화면 밀도가 160dpi(mdpi)라 1dp = 1px이고 화면 폭이 약 2560dp다.** 기본 크기(버튼 높이 약 40dp, 글자 16~32sp)는 매우 작게 보인다. 주행 중 사용을 위해 터치 영역과 글자를 크게(예: 버튼 높이 80dp 이상, 본문 28sp 이상) 잡아야 한다
 
 ## 앱 제약 (Pleos 가이드)
 - 주행 중에는 CarUxRestrictions를 확인해 제한 기능을 줄이거나 끈다. 영상 재생 금지, 애니메이션 최소화, 큰 터치 영역, 텍스트 최소화
