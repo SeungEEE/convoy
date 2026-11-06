@@ -1,0 +1,86 @@
+language: "ko-KR"
+tone_instructions: "한국어로, 간결하고 구체적으로. 문제는 SPEC.md 요구사항 번호(R__)와 연결해 근거를 적는다. 추측으로 SDK API를 제안하지 않는다."
+
+reviews:
+  profile: "chill"
+  high_level_summary: true
+  poem: false
+  review_status: true
+  collapse_walkthrough: true
+
+  auto_review:
+    enabled: true
+    drafts: false
+    # 기본 브랜치(develop)는 항상 포함된다. 제출용 main 머지 PR도 리뷰한다.
+    base_branches:
+      - "^main$"
+    ignore_title_keywords:
+      - "WIP"
+
+  path_filters:
+    - "!gradle/wrapper/**"
+    - "!**/*.webp"
+    - "!app/src/main/res/mipmap-*/**"
+
+  path_instructions:
+    - path: "SPEC.md"
+      instructions: |
+        이 문서는 구현과 테스트의 기준이다. 모호한 표현("잘", "적당히"), 빠진 경계값,
+        요구사항 본문과 예시표 사이의 모순, R번호·작업 목록의 불일치를 찾는다.
+        규칙을 바꾸는 변경이면 REQUEST.md와 충돌하지 않는지, 이미 있는 테스트 기대값에
+        영향이 없는지 확인한다.
+
+    - path: "REQUEST.md"
+      instructions: |
+        요청서다. SPEC.md와 docs/sdk-findings.md의 내용과 충돌하는 부분만 지적한다.
+
+    - path: "app/src/test/**"
+      instructions: |
+        기대값은 SPEC.md의 예시표와 일치해야 한다. 코드가 아니라 명세에서 가져온 값인지 본다.
+        경계값(예: 5자/6자/7자, 599/600/601초, 199m/200m, 29초/30초)이 빠졌는지 확인한다.
+        기대값을 바꿔 테스트를 통과시킨 흔적이 있으면 지적한다. 구현 세부에 과하게 묶인 테스트도 지적한다.
+
+    - path: "app/src/main/java/**/domain/**"
+      instructions: |
+        SDK와 무관한 순수 로직이어야 한다. ai.pleos 패키지 import, Android 프레임워크 import,
+        시스템 시계(System.currentTimeMillis 등) 직접 사용은 허용하지 않는다(시간은 Clock으로 주입).
+        함수 동작이 SPEC.md 예시표와 일치하는지 확인한다.
+
+    - path: "app/src/main/java/**/data/**"
+      instructions: |
+        SDK(NaviHelper, Vehicle) 호출은 인터페이스 뒤에 있어야 한다.
+        initialize와 release가 짝이 맞는지, 리스너 등록과 해제가 짝이 맞는지 확인한다.
+        Vehicle 리스너 콜백의 인자는 nullable이고 onFailed를 구현해야 한다.
+        사용할 수 없는 SDK(FusedLocation, TextToSpeech, SpeechToText, Vehicle Control)를 쓰면 지적한다.
+        NaviHelper 위치는 푸시가 아니라 2초 폴링이다. 폴링 해제를 잊지 않았는지 본다.
+
+    - path: "app/src/main/java/**/ui/**"
+      instructions: |
+        주행 중 사용을 전제로 한다. 터치 영역과 글자가 충분히 큰지(화면이 160dpi, 폭 약 2560dp),
+        주행 중에 금지된 조작(SPEC R10)을 허용하지 않는지, 영상·애니메이션이 과하지 않은지 확인한다.
+        UI 상태가 domain 규칙을 우회해 판단하지 않는지 본다.
+
+    - path: "app/src/main/AndroidManifest.xml"
+      instructions: |
+        퍼미션이 추가되면 지적한다. PRIVATE_CAR_* 퍼미션은 실제 차량에서 App Market 승인이 필요하므로
+        PR 설명에 이유가 있는지 확인한다.
+
+    - path: "**/*.gradle.kts"
+      instructions: |
+        의존성과 플러그인 변경은 이유가 PR 설명에 있어야 한다. 버전은 libs.versions.toml로 관리한다.
+        Pleos SDK 저장소 외의 새 외부 저장소가 추가되었는지 확인한다.
+
+    - path: "gradle/libs.versions.toml"
+      instructions: |
+        버전 변경이 빌드 환경(AGP 9.2.1, Gradle 9.4.1, Kotlin 2.2.10, compileSdk 36.1)과 호환되는지 확인한다.
+
+  tools:
+    gitleaks:
+      enabled: true
+
+chat:
+  auto_reply: true
+
+knowledge_base:
+  code_guidelines:
+    enabled: true
