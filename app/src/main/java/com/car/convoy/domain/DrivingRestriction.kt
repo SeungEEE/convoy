@@ -17,4 +17,11 @@ enum class DriverAction {
  * PARK이 아닌 기어(NEUTRAL, REVERSE, UNKNOWN 포함)는 모두 주행 중으로 본다.
  */
 fun canPerform(action: DriverAction, gear: Gear): Boolean =
-    TODO("SPEC R10-1")
+    gear == Gear.PARK || action in ALLOWED_WHILE_DRIVING
+
+private val ALLOWED_WHILE_DRIVING = setOf(
+    DriverAction.CHANGE_MY_STATUS,
+    DriverAction.ACCEPT_INVITE,
+    DriverAction.ACCEPT_OR_END_FOLLOW,
+    DriverAction.RESPOND_ACCIDENT_CHECK,
+)
