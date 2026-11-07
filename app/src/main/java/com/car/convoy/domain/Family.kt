@@ -11,4 +11,10 @@ enum class FamilyEvent { REQUEST, ACCEPT, DECLINE, DISABLE }
  * 표에 없는 조합은 상태를 바꾸지 않는다(예: 요청 없이 수락할 수 없다).
  */
 fun nextFamilyState(current: FamilyState, event: FamilyEvent): FamilyState =
-    TODO("SPEC R9")
+    when (current to event) {
+        FamilyState.NONE to FamilyEvent.REQUEST -> FamilyState.PENDING
+        FamilyState.PENDING to FamilyEvent.ACCEPT -> FamilyState.ACTIVE
+        FamilyState.PENDING to FamilyEvent.DECLINE -> FamilyState.NONE
+        FamilyState.ACTIVE to FamilyEvent.DISABLE -> FamilyState.NONE
+        else -> current
+    }
