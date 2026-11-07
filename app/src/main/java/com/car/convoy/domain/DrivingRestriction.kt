@@ -1,0 +1,20 @@
+package com.car.convoy.domain
+
+/** SPEC R10. 사용자가 하려는 동작. */
+enum class DriverAction {
+    REGISTER_FRIEND,
+    REGISTER_FAMILY,
+    CREATE_OR_INVITE_GROUP,
+    CHANGE_MY_STATUS,
+    ACCEPT_INVITE,
+    ACCEPT_OR_END_FOLLOW,
+    RESPOND_ACCIDENT_CHECK,
+}
+
+/**
+ * SPEC R10-1: 설정은 정차(PARK) 중에만 한다.
+ * 주행 중에는 상태 변경, 초대 수락, 따라가기 수락·끊기, 사고 확인 응답만 가능하다.
+ * PARK이 아닌 기어(NEUTRAL, REVERSE, UNKNOWN 포함)는 모두 주행 중으로 본다.
+ */
+fun canPerform(action: DriverAction, gear: Gear): Boolean =
+    TODO("SPEC R10-1")
