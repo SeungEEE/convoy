@@ -14,8 +14,12 @@ enum class MemberState { DEPARTED, ARRIVED }
  * 목적지가 있으면 D→P는 도착으로 보지 않는다(도착은 내비 이벤트가 알린다).
  */
 fun gearEvent(previous: Gear, current: Gear, hasDestination: Boolean): GearEvent =
-    TODO("SPEC R7-1~3")
+    when {
+        previous == Gear.PARK && current == Gear.DRIVE -> GearEvent.DEPARTED
+        previous == Gear.DRIVE && current == Gear.PARK && !hasDestination -> GearEvent.ARRIVED
+        else -> GearEvent.NONE
+    }
 
 /** SPEC R7-4: 멤버가 있고 모두 ARRIVED이면 그룹을 종료한다. */
 fun isGroupFinished(memberStates: List<MemberState>): Boolean =
-    TODO("SPEC R7-4")
+    memberStates.isNotEmpty() && memberStates.all { it == MemberState.ARRIVED }
