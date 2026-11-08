@@ -225,7 +225,7 @@ R5~R7의 규칙을 이어 붙인 흐름이다. 새 규칙은 최소로 하고, �
 이벤트: `LEADER_SET_DESTINATION`, `ROUTE_STARTED`, `GEAR_DEPARTED`, `NAVI_ARRIVED`, `GEAR_ARRIVED`
 효과: `REQUEST_ROUTE`, `SHARE_DEPARTED`, `SHARE_ARRIVED`
 
-`nextMemberState(state, event)` → (다음 상태, 효과). 모두 10행이다.
+`nextMemberState(state, event)` → (다음 상태, 효과). 모두 11행이다.
 
 | 현재 | 이벤트 | 다음 | 효과 |
 |---|---|---|---|
@@ -239,8 +239,11 @@ R5~R7의 규칙을 이어 붙인 흐름이다. 새 규칙은 최소로 하고, �
 | `IDLE` | `NAVI_ARRIVED` | `IDLE` | 없음 (출발 없이 도착할 수 없다) |
 | `REROUTING` | `GEAR_DEPARTED` | `REROUTING` | `SHARE_DEPARTED` (출발은 공유하되, 경로 시작 전이라 상태는 그대로) |
 | `REROUTING` | `NAVI_ARRIVED` | `REROUTING` | 없음 (새 경로 시작 전의 도착은 이전 경로의 늦은 이벤트로 본다) |
+| `REROUTING` | `LEADER_SET_DESTINATION` | `REROUTING` | `REQUEST_ROUTE` (재탐색 중에 목적지가 다시 바뀌면 새 목적지로 다시 요청한다) |
 
 표에 없는 조합은 상태를 바꾸지 않고 효과도 없다. (제안)
+
+`GEAR_ARRIVED`는 목적지가 없는 멤버에게만 보낸다. 호출하는 쪽이 `gearEvent`의 결과가 `ARRIVED`이고 그 멤버에게 목적지가 없을 때만 이 이벤트를 만든다. (제안)
 
 `FINISH_GROUP`은 이 함수가 아니라 그룹 단위 흐름(작업 19)이 `isGroupFinished`로 판단한다.
 
@@ -280,7 +283,7 @@ com.car.convoy
 - [ ] 작업 14. `data/` 어댑터와 `FakeConvoyServer` (에뮬레이터에서 수동 확인)
 - [ ] 작업 15. `ui/` 화면 (친구 지도, 그룹, 사고 확인, 가족 알림)
 - [ ] 작업 16. 시나리오 시연: 목적지 변경 → 일행 재탐색 → 도착 공유, 사고 의심 → 확인 → 가족 알림
-- [ ] 작업 17. `nextMemberState` (R11, 10행). (선행: 작업 14 전에 한다)
+- [ ] 작업 17. `nextMemberState` (R11, 11행). (선행: 작업 14 전에 한다)
 - [ ] 작업 18. 그룹 목적지 전파: 포트(`NaviPort`, `ConvoyServer`)의 가짜 구현으로, 리더가 목적지를 바꾸면 멤버 N명 모두에게 `requestRoute`가 호출되고 `NOT_LEADER`·`IGNORE_SAME`이면 호출되지 않음을 테스트한다 (R5, R11-1). (선행: 작업 14 전에 한다)
 - [ ] 작업 19. 그룹 종료: 전원 `ARRIVED`면 `FINISH_GROUP`이 나오고, 종료 뒤 목적지 변경은 무시됨을 테스트한다 (R7-4, R11-5, R11-9). (선행: 작업 14 전에 한다)
 
