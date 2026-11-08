@@ -214,14 +214,18 @@ R5~R7의 규칙을 이어 붙인 흐름이다. 새 규칙은 최소로 하고, �
 - R11-4. 목적지가 있는 멤버는 내비 도착 이벤트(`onDestinationArrived`)가 오면 `ARRIVED`가 되고 도착을 공유한다. 목적지가 없는 멤버는 `gearEvent`가 `ARRIVED`일 때 `ARRIVED`가 된다.
 - R11-5. 멤버가 `ARRIVED`가 되어 `isGroupFinished`가 true가 되면 `FINISH_GROUP` 효과를 낸다.
 - R11-6. 이미 `ARRIVED`인 멤버에게 새 목적지가 오면 다시 `REROUTING`이 된다. (제안)
-- R11-7. R7의 `MemberState.DEPARTED`는 이 장의 `DRIVING`과 같은 뜻이다. `isGroupFinished`는 `ARRIVED` 여부만 본다.
-- R11-8. 에뮬레이터는 위치가 고정이라 실제 `onDestinationArrived`가 오지 않는다. 데모에서는 `FakeConvoyServer`의 가상 멤버가 `NAVI_ARRIVED` 이벤트를 만든다. 실제 이벤트 수신은 실차에서 추가로 확인한다.
+- R11-7. 이 장의 멤버 상태는 R7의 `MemberState`(`DEPARTED`, `ARRIVED`)와 별도 타입이다. `isGroupFinished`에 넘길 때는 `ARRIVED`는 `ARRIVED`로, 나머지(`IDLE`, `REROUTING`, `DRIVING`)는 모두 `DEPARTED`로 바꾼다. 이미 머지된 R7의 함수와 테스트는 바꾸지 않는다. (제안)
+- R11-8. 이번 에뮬레이터 시험에서는 위치가 고정되어 `onDestinationArrived`를 유도하지 못했다(`docs/sdk-findings.md`). 이것이 SDK에서 도착이 안 된다는 뜻은 아니다. 데모에서는 `FakeConvoyServer`의 가상 멤버가 `NAVI_ARRIVED` 이벤트를 만들며, 이는 SDK 도착 이벤트의 검증이 아니라 데모용 대체 이벤트다. 실제 이벤트 수신은 실차 또는 다른 위치 시뮬레이션으로 추가 확인한다.
+- R11-9. 그룹이 종료(`FINISH_GROUP`)된 뒤 리더가 목적지를 바꿔도 무시한다. 새 목적지는 새 그룹을 만들어서 정한다. (제안)
+- R11-10. 목적지 없이 따라가는 추적 주행(R6)의 흐름은 이 장에 포함하지 않고 R12에서 다룬다.
+
+아래 상태, 이벤트, 효과의 이름은 R5~R7에서 직접 정해지지 않은 모델링 선택이므로 모두 (제안)이다.
 
 멤버 상태: `IDLE`(출발 전), `REROUTING`, `DRIVING`, `ARRIVED`
 이벤트: `LEADER_SET_DESTINATION`, `ROUTE_STARTED`, `GEAR_DEPARTED`, `NAVI_ARRIVED`, `GEAR_ARRIVED`
 효과: `REQUEST_ROUTE`, `SHARE_DEPARTED`, `SHARE_ARRIVED`
 
-`nextMemberState(state, event)` → (다음 상태, 효과)
+`nextMemberState(state, event)` → (다음 상태, 효과). 모두 10행이다.
 
 | 현재 | 이벤트 | 다음 | 효과 |
 |---|---|---|---|
@@ -233,10 +237,12 @@ R5~R7의 규칙을 이어 붙인 흐름이다. 새 규칙은 최소로 하고, �
 | `ARRIVED` | `LEADER_SET_DESTINATION` | `REROUTING` | `REQUEST_ROUTE` |
 | `DRIVING` | `LEADER_SET_DESTINATION` | `REROUTING` | `REQUEST_ROUTE` |
 | `IDLE` | `NAVI_ARRIVED` | `IDLE` | 없음 (출발 없이 도착할 수 없다) |
+| `REROUTING` | `GEAR_DEPARTED` | `REROUTING` | `SHARE_DEPARTED` (출발은 공유하되, 경로 시작 전이라 상태는 그대로) |
+| `REROUTING` | `NAVI_ARRIVED` | `REROUTING` | 없음 (새 경로 시작 전의 도착은 이전 경로의 늦은 이벤트로 본다) |
 
 표에 없는 조합은 상태를 바꾸지 않고 효과도 없다. (제안)
 
-`FINISH_GROUP`은 이 함수가 아니라 그룹 단위 흐름(작업 18)이 `isGroupFinished`로 판단한다.
+`FINISH_GROUP`은 이 함수가 아니라 그룹 단위 흐름(작업 19)이 `isGroupFinished`로 판단한다.
 
 ## 2장. 구조
 
@@ -274,8 +280,9 @@ com.car.convoy
 - [ ] 작업 14. `data/` 어댑터와 `FakeConvoyServer` (에뮬레이터에서 수동 확인)
 - [ ] 작업 15. `ui/` 화면 (친구 지도, 그룹, 사고 확인, 가족 알림)
 - [ ] 작업 16. 시나리오 시연: 목적지 변경 → 일행 재탐색 → 도착 공유, 사고 의심 → 확인 → 가족 알림
-- [ ] 작업 17. `nextMemberState` (R11, 8행). 작업 14보다 먼저 한다
-- [ ] 작업 18. 그룹 흐름: 포트(`NaviPort`, `ConvoyServer`)와 가짜 구현으로 R11 흐름을 테스트한다(리더 목적지 변경 → 멤버 N명의 `requestRoute` 호출, 전원 도착 → `FINISH_GROUP`). 작업 14보다 먼저 한다
+- [ ] 작업 17. `nextMemberState` (R11, 10행). (선행: 작업 14 전에 한다)
+- [ ] 작업 18. 그룹 목적지 전파: 포트(`NaviPort`, `ConvoyServer`)의 가짜 구현으로, 리더가 목적지를 바꾸면 멤버 N명 모두에게 `requestRoute`가 호출되고 `NOT_LEADER`·`IGNORE_SAME`이면 호출되지 않음을 테스트한다 (R5, R11-1). (선행: 작업 14 전에 한다)
+- [ ] 작업 19. 그룹 종료: 전원 `ARRIVED`면 `FINISH_GROUP`이 나오고, 종료 뒤 목적지 변경은 무시됨을 테스트한다 (R7-4, R11-5, R11-9). (선행: 작업 14 전에 한다)
 
 ## 4장. P1 (2차 PT 전, 이번 명세에 포함하지 않음)
 방향지시등 공유, 근접·이탈 알림, 휴게·충전 조율(배터리 `getEvBatteryStateOfCharge`), 주행 상태 공유, 친구별 숨기기. P0 테스트가 모두 초록이 된 뒤 같은 방식으로 명세를 추가한다.
