@@ -205,6 +205,39 @@
 
 (`NEUTRAL`, `REVERSE`는 `DRIVE`와 같게 취급한다. `UNKNOWN`은 안전을 위해 `DRIVE`와 같게 취급한다.) (제안)
 
+### R11. 그룹 주행 흐름
+R5~R7의 규칙을 이어 붙인 흐름이다. 새 규칙은 최소로 하고, 새로 정한 값은 (제안)으로 표시한다.
+
+- R11-1. 리더가 목적지를 바꾸면, `shouldSyncDestination`이 `SYNC`일 때만 **모든 멤버에게** `REQUEST_ROUTE`(목적지) 효과를 낸다. `NOT_LEADER`나 `IGNORE_SAME`이면 효과가 없다.
+- R11-2. 멤버에게 `REQUEST_ROUTE`가 나가면 그 멤버는 `REROUTING`(재탐색 중)이 된다. 내비의 경로 시작 이벤트(`onRouteStarted`)가 오면 `DRIVING`이 된다. 확정까지 수 초 걸린다(실측 5.3~6.7초, `docs/sdk-findings.md`).
+- R11-3. 멤버의 `gearEvent`가 `DEPARTED`면 그 멤버는 `DRIVING`이 되고 출발을 공유한다. 목적지가 있는 멤버는 `gearEvent`의 `ARRIVED`를 쓰지 않는다(R7-2).
+- R11-4. 목적지가 있는 멤버는 내비 도착 이벤트(`onDestinationArrived`)가 오면 `ARRIVED`가 되고 도착을 공유한다. 목적지가 없는 멤버는 `gearEvent`가 `ARRIVED`일 때 `ARRIVED`가 된다.
+- R11-5. 멤버가 `ARRIVED`가 되어 `isGroupFinished`가 true가 되면 `FINISH_GROUP` 효과를 낸다.
+- R11-6. 이미 `ARRIVED`인 멤버에게 새 목적지가 오면 다시 `REROUTING`이 된다. (제안)
+- R11-7. R7의 `MemberState.DEPARTED`는 이 장의 `DRIVING`과 같은 뜻이다. `isGroupFinished`는 `ARRIVED` 여부만 본다.
+- R11-8. 에뮬레이터는 위치가 고정이라 실제 `onDestinationArrived`가 오지 않는다. 데모에서는 `FakeConvoyServer`의 가상 멤버가 `NAVI_ARRIVED` 이벤트를 만든다. 실제 이벤트 수신은 실차에서 추가로 확인한다.
+
+멤버 상태: `IDLE`(출발 전), `REROUTING`, `DRIVING`, `ARRIVED`
+이벤트: `LEADER_SET_DESTINATION`, `ROUTE_STARTED`, `GEAR_DEPARTED`, `NAVI_ARRIVED`, `GEAR_ARRIVED`
+효과: `REQUEST_ROUTE`, `SHARE_DEPARTED`, `SHARE_ARRIVED`
+
+`nextMemberState(state, event)` → (다음 상태, 효과)
+
+| 현재 | 이벤트 | 다음 | 효과 |
+|---|---|---|---|
+| `IDLE` | `LEADER_SET_DESTINATION` | `REROUTING` | `REQUEST_ROUTE` |
+| `REROUTING` | `ROUTE_STARTED` | `DRIVING` | 없음 |
+| `IDLE` | `GEAR_DEPARTED` | `DRIVING` | `SHARE_DEPARTED` |
+| `DRIVING` | `NAVI_ARRIVED` | `ARRIVED` | `SHARE_ARRIVED` |
+| `DRIVING` | `GEAR_ARRIVED` (목적지 없음) | `ARRIVED` | `SHARE_ARRIVED` |
+| `ARRIVED` | `LEADER_SET_DESTINATION` | `REROUTING` | `REQUEST_ROUTE` |
+| `DRIVING` | `LEADER_SET_DESTINATION` | `REROUTING` | `REQUEST_ROUTE` |
+| `IDLE` | `NAVI_ARRIVED` | `IDLE` | 없음 (출발 없이 도착할 수 없다) |
+
+표에 없는 조합은 상태를 바꾸지 않고 효과도 없다. (제안)
+
+`FINISH_GROUP`은 이 함수가 아니라 그룹 단위 흐름(작업 18)이 `isGroupFinished`로 판단한다.
+
 ## 2장. 구조
 
 ```
@@ -241,6 +274,8 @@ com.car.convoy
 - [ ] 작업 14. `data/` 어댑터와 `FakeConvoyServer` (에뮬레이터에서 수동 확인)
 - [ ] 작업 15. `ui/` 화면 (친구 지도, 그룹, 사고 확인, 가족 알림)
 - [ ] 작업 16. 시나리오 시연: 목적지 변경 → 일행 재탐색 → 도착 공유, 사고 의심 → 확인 → 가족 알림
+- [ ] 작업 17. `nextMemberState` (R11, 8행). 작업 14보다 먼저 한다
+- [ ] 작업 18. 그룹 흐름: 포트(`NaviPort`, `ConvoyServer`)와 가짜 구현으로 R11 흐름을 테스트한다(리더 목적지 변경 → 멤버 N명의 `requestRoute` 호출, 전원 도착 → `FINISH_GROUP`). 작업 14보다 먼저 한다
 
 ## 4장. P1 (2차 PT 전, 이번 명세에 포함하지 않음)
 방향지시등 공유, 근접·이탈 알림, 휴게·충전 조율(배터리 `getEvBatteryStateOfCharge`), 주행 상태 공유, 친구별 숨기기. P0 테스트가 모두 초록이 된 뒤 같은 방식으로 명세를 추가한다.
