@@ -23,7 +23,7 @@
 - 목적지와 ETA: `requestRoute(RouteInfo)` 후 `getDestinationInfo()` → `DestinationInfo.remainDistance`(m), `remainTime`(초)
 - 경로 제어: `cancelRoute()`, `requestReRoute()`, `changeRouteOption()`, `addWaypoint()`(최대 2개), `removeWaypoint()`
 - 이벤트: `onRouteStarted`, `onNavigationStatus`, `onDrivingInfo`, `onDestinationArrived`, `onDestinationChanged`, `onRouteCancelled`, `onError`
-- 경로를 요청하면 Pleos 내비 앱이 전면으로 올라와 안내를 시작한다. 내 앱은 백그라운드가 되지만 콜백은 계속 왔다
+- 경로를 요청하면 안내가 시작된다. 내 앱이 이미 전면이면 내비 앱이 전면을 가져가지 않았다(아래 "그룹 주행 검증" 참고, 이전 관찰과 다르다). 내 앱이 백그라운드여도 콜백은 계속 왔다
 - 다른 차의 목적지를 받는 기능은 SDK에 없다. 자체 서버로 목적지를 전달하고 각 차가 `requestRoute`를 호출한다
 
 ## Vehicle (`ai.pleos.playground.vehicle`)
@@ -47,7 +47,7 @@
 - AVD `Pleos_Connect_v2.1.0`: API 34, Cold boot 필수(Quick boot면 차량 신호 불가), RAM 4GB, 화면 2560x1440 가로(왼쪽 차량 정보, 오른쪽 앱 영역)
 - Virtual Console: `adb forward tcp:8088 tcp:8088` 후 `http://127.0.0.1:8088/`의 Emulation Controls에서 기어, 방향지시등, 경고등 등을 바꾼다. 위치(GPS)와 차속 카드는 없다
 - **위치가 성남시 수정구 시흥동(37.4127, 127.0947)에 고정**이고 heading은 0이다. `adb emu geo fix`로 바꿔도 NaviHelper 위치는 변하지 않았다
-- 미확인: 에뮬레이터 2대 동시 실행, `onDestinationArrived` 실제 수신, `addWaypoint`, 외부 네트워크 통신
+- 미확인: 에뮬레이터 2대 동시 실행, `onDestinationArrived` 실제 수신(아래 참고: 에뮬레이터에서 유도하지 못함), `addWaypoint`, `updateOccupiedRegion`의 동작
 
 ## Compose (작업 0, 2026-11-06 확인)
 - **Jetpack Compose가 Pleos 에뮬레이터에서 동작한다.** 텍스트 렌더링과 버튼 클릭(상태 변경)을 확인했다
@@ -59,3 +59,25 @@
 - 주행 중에는 CarUxRestrictions를 확인해 제한 기능을 줄이거나 끈다. 영상 재생 금지, 애니메이션 최소화, 큰 터치 영역, 텍스트 최소화
 - 응답 0.25초 이내, 앱 실행 10초 이내, CPU는 주행 중 비내비 앱 5% 미만, RAM 400MB 이하
 - 레터박스와 호환성 모드 금지. `screenOrientation`을 지정하지 않으면 세로 단일 window이고, `landscape`면 2개 window를 쓴다
+
+## 그룹 주행 검증 (2026-11-08, `spike/group-probe`, Pleos Emulator 2.1.0)
+그룹 주행(R5 목적지 동기화, R7 도착 공유)이 SDK 위에서 되는지 확인한 결과다. 시험 코드는 `spike/group-probe`에만 있고 머지하지 않는다.
+
+| 확인 | 결과 |
+|---|---|
+| 안내 중 `cancelRoute` 없이 새 `requestRoute` | **된다.** 기존 경로가 자동 취소되고(`onRouteCancelled`, 내비 상태 `FREE_DRIVE`) 새 경로가 시작된다(`onRouteStarted`, `ROUTE_DRIVE`). `getDestinationInfo`도 새 목적지로 바뀐다. 요청부터 경로 확정까지 약 5~7초 걸린다 |
+| `onDestinationArrived` | **에뮬레이터에서 유도하지 못했다.** 위치가 고정이라 차가 움직이지 않는다. 현재 위치와 같은 좌표(남은 거리 2m)와 40m 떨어진 좌표(10m)를 목적지로 줬지만 20초 넘게 도착 이벤트가 오지 않았다. 도착 시연은 가상 멤버(`FakeConvoyServer`)로 대신해야 한다 |
+| 외부 통신 | **된다.** 앱에서 호스트 PC(`http://10.0.2.2:<포트>`)와 인터넷(`https://example.com`)에 HTTP 200. `INTERNET` 퍼미션과 평문 통신은 `usesCleartextTraffic`이 필요하다. 호스트에서 `python3 -m http.server`로 시험했다 |
+| `requestRoute` 후 내비 앱이 전면을 가져가는가 | 가져가지 않았다. 내 앱이 전면인 상태에서 경로가 시작된 뒤 12초 동안 내 앱이 앞에 남았다 |
+| `requestNavigationScreen(Foreground)` | `pleos.car.permission.NAVI_CUSTOM_MAP`이 없으면 `SecurityException`. 이 퍼미션을 매니페스트에 넣으면 에뮬레이터에서 `granted=true`이고, 호출하면 **Pleos 내비 앱(`ai.umos.maps.android.navigation.app`)이 전면으로 올라와 내 앱이 있던 오른쪽 앱 영역을 대체한다** |
+| 에뮬레이터 2대 동시 실행 | 시험하지 않았다 |
+
+### 화면 구성
+- 에뮬레이터 화면은 **왼쪽 차량 패널(기어, 속도, 차량 그림)과 오른쪽 앱 영역**이다. 내 앱과 내비 앱은 같은 오른쪽 영역을 번갈아 쓴다. 나란히 놓이지 않았다
+- 내비 앱이 전면일 때 오른쪽 영역에 목적지명, 남은 거리, 도착 시각, 내 위치 마커, 안내 종료 버튼이 표시된다. 지도 위에 다른 차를 그리는 SDK API는 찾지 못했다
+- `NaviHelper.getInternalApi().updateOccupiedRegion(Rect)`는 존재하지만 문서가 없고 동작은 확인하지 못했다
+
+### 기획에 미치는 영향
+- 목적지 동기화는 멤버 차에서 `requestRoute`를 그대로 호출하면 된다(`cancelRoute` 불필요). 확정까지 수 초 걸리므로 UI에 "재탐색 중" 상태가 필요하다
+- 도착 공유는 `onDestinationArrived`가 실제로 오는지 에뮬레이터에서 확인할 수 없다. 실차에서만 확인 가능하며, 데모는 가상 멤버로 한다
+- 친구·일행 위치를 지도에 표시하는 기능은 SDK로는 불가능하다. Convoy 자체 화면은 목록과 상태 표시 중심이어야 한다
