@@ -14,4 +14,25 @@ data class MemberTransition(val state: GroupMemberState, val effect: MemberEffec
 
 /** SPEC R11: 표에 없는 조합은 상태를 바꾸지 않고 효과도 없다. */
 fun nextMemberState(state: GroupMemberState, event: GroupEvent): MemberTransition =
-    TODO("SPEC R11")
+    when (state to event) {
+        GroupMemberState.IDLE to GroupEvent.LEADER_SET_DESTINATION,
+        GroupMemberState.DRIVING to GroupEvent.LEADER_SET_DESTINATION,
+        GroupMemberState.ARRIVED to GroupEvent.LEADER_SET_DESTINATION ->
+            MemberTransition(GroupMemberState.REROUTING, MemberEffect.REQUEST_ROUTE)
+
+        GroupMemberState.REROUTING to GroupEvent.ROUTE_STARTED ->
+            MemberTransition(GroupMemberState.DRIVING, null)
+
+        GroupMemberState.IDLE to GroupEvent.GEAR_DEPARTED ->
+            MemberTransition(GroupMemberState.DRIVING, MemberEffect.SHARE_DEPARTED)
+
+        // 재탐색 중 출발은 공유하되, 경로가 시작되기 전이라 상태는 그대로 둔다(R11-3).
+        GroupMemberState.REROUTING to GroupEvent.GEAR_DEPARTED ->
+            MemberTransition(GroupMemberState.REROUTING, MemberEffect.SHARE_DEPARTED)
+
+        GroupMemberState.DRIVING to GroupEvent.NAVI_ARRIVED,
+        GroupMemberState.DRIVING to GroupEvent.GEAR_ARRIVED ->
+            MemberTransition(GroupMemberState.ARRIVED, MemberEffect.SHARE_ARRIVED)
+
+        else -> MemberTransition(state, null)
+    }
