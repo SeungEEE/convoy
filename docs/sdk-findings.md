@@ -23,7 +23,7 @@
 - 목적지와 ETA: `requestRoute(RouteInfo)` 후 `getDestinationInfo()` → `DestinationInfo.remainDistance`(m), `remainTime`(초)
 - 경로 제어: `cancelRoute()`, `requestReRoute()`, `changeRouteOption()`, `addWaypoint()`(최대 2개), `removeWaypoint()`
 - 이벤트: `onRouteStarted`, `onNavigationStatus`, `onDrivingInfo`, `onDestinationArrived`, `onDestinationChanged`, `onRouteCancelled`, `onError`
-- 경로를 요청하면 Pleos 내비 앱이 전면으로 올라와 안내를 시작한다. 내 앱은 백그라운드가 되지만 콜백은 계속 왔다
+- 경로를 요청하면 안내가 시작된다. 내 앱이 이미 전면이면 내비 앱이 전면을 가져가지 않았다(아래 "그룹 주행 검증" 참고, 이전 관찰과 다르다). 내 앱이 백그라운드여도 콜백은 계속 왔다
 - 다른 차의 목적지를 받는 기능은 SDK에 없다. 자체 서버로 목적지를 전달하고 각 차가 `requestRoute`를 호출한다
 
 ## Vehicle (`ai.pleos.playground.vehicle`)
@@ -47,7 +47,7 @@
 - AVD `Pleos_Connect_v2.1.0`: API 34, Cold boot 필수(Quick boot면 차량 신호 불가), RAM 4GB, 화면 2560x1440 가로(왼쪽 차량 정보, 오른쪽 앱 영역)
 - Virtual Console: `adb forward tcp:8088 tcp:8088` 후 `http://127.0.0.1:8088/`의 Emulation Controls에서 기어, 방향지시등, 경고등 등을 바꾼다. 위치(GPS)와 차속 카드는 없다
 - **위치가 성남시 수정구 시흥동(37.4127, 127.0947)에 고정**이고 heading은 0이다. `adb emu geo fix`로 바꿔도 NaviHelper 위치는 변하지 않았다
-- 미확인: 에뮬레이터 2대 동시 실행, `onDestinationArrived` 실제 수신, `addWaypoint`, 외부 네트워크 통신
+- 미확인: 에뮬레이터 2대 동시 실행, `onDestinationArrived` 실제 수신(아래 참고: 에뮬레이터에서 유도하지 못함), `addWaypoint`, `updateOccupiedRegion`의 동작
 
 ## Compose (작업 0, 2026-11-06 확인)
 - **Jetpack Compose가 Pleos 에뮬레이터에서 동작한다.** 텍스트 렌더링과 버튼 클릭(상태 변경)을 확인했다
@@ -59,3 +59,28 @@
 - 주행 중에는 CarUxRestrictions를 확인해 제한 기능을 줄이거나 끈다. 영상 재생 금지, 애니메이션 최소화, 큰 터치 영역, 텍스트 최소화
 - 응답 0.25초 이내, 앱 실행 10초 이내, CPU는 주행 중 비내비 앱 5% 미만, RAM 400MB 이하
 - 레터박스와 호환성 모드 금지. `screenOrientation`을 지정하지 않으면 세로 단일 window이고, `landscape`면 2개 window를 쓴다
+
+## 그룹 주행 검증 (2026-11-08, `spike/group-probe`, Pleos Emulator 2.1.0)
+그룹 주행(R5 목적지 동기화, R7 도착 공유)이 SDK 위에서 되는지 확인한 결과다. 시험 코드는 `spike/group-probe`에만 있고 머지하지 않는다.
+시험은 `adb shell am start -n com.car.convoy/.MainActivity --es probe <이름>`으로 한 번에 하나씩 수동으로 실행하고 `logcat -s ConvoyTest`로 읽었다. 호출 순서, 대기 시간, "취소 없이"라는 조건은 코드가 아니라 사람이 정한 것이다. 시간은 logcat 타임스탬프를 손으로 비교한 값이다.
+
+| 확인 | 결과 |
+|---|---|
+| 안내 중 `cancelRoute` 없이 새 `requestRoute` | **된다.** 순서: `routeA`(강남역)로 `ROUTE_DRIVE`가 된 뒤 `cancel` 없이 `routeB`(서울역) 실행. 기존 경로가 자동 취소되고(`onRouteCancelled`, 내비 상태 `FREE_DRIVE`) 새 경로가 시작되며(`onRouteStarted`, `ROUTE_DRIVE`), `getDestinationInfo`도 서울역으로 바뀌었다. 요청부터 `onRouteStarted`까지 4회 측정에서 5.3~6.7초 |
+| `onDestinationArrived` | **에뮬레이터에서 유도하지 못했다.** 위치가 고정이라 차가 움직이지 않는다. `routeHere`(현재 위치 좌표, 남은 거리 2m)와 `routeNear`(약 40m 떨어진 좌표, 남은 거리 10m)를 각각 요청하고 약 20초 동안 지켜봤지만 도착 이벤트가 오지 않았고 남은 거리도 그대로였다. SDK에서 도착이 안 된다는 뜻이 아니다. 실차 또는 위치를 움직일 수 있는 다른 방법으로 추가 확인이 필요하다 |
+| 외부 통신 | 앱에서 호스트 PC의 `http://10.0.2.2:8099/ping`과 `https://example.com`에 요청했고, 두 로그 모두 응답 코드 200이 기록됐다. 호스트에서는 `ping` 파일(내용 `pong`)이 있는 디렉터리에서 `python3 -m http.server 8099 --bind 0.0.0.0`을 실행했다. `INTERNET` 퍼미션과 평문 HTTP를 위한 `usesCleartextTraffic`이 필요하다. probe는 응답 코드를 그대로 찍으므로 로그의 "OK"는 연결 성공을 뜻하고, 200 여부는 로그의 코드로 판단한다 |
+| `requestRoute` 후 내비 앱이 전면을 가져가는가 | 가져가지 않았다. 내 앱이 전면인 상태에서 `routeA`를 한 번 보내고 그 뒤 12초 동안 아무 명령도 보내지 않았을 때 내 앱이 계속 앞에 있었다 |
+| `requestNavigationScreen(Foreground)` | `pleos.car.permission.NAVI_CUSTOM_MAP`이 없으면 `SecurityException`. 이 퍼미션을 매니페스트에 넣으면 에뮬레이터에서 `granted=true`이고, 호출하면 **Pleos 내비 앱(`ai.umos.maps.android.navigation.app`)이 전면으로 올라와 내 앱이 있던 오른쪽 앱 영역을 대체했다** |
+| 에뮬레이터 2대 동시 실행 | 시험하지 않았다 |
+
+### 화면 구성
+- 에뮬레이터 화면은 **왼쪽 차량 패널(기어, 속도, 차량 그림)과 오른쪽 앱 영역**이다. 이 시험에서 내 앱과 내비 앱은 같은 오른쪽 영역을 번갈아 썼고 나란히 놓이지 않았다
+- 내비 앱이 전면일 때 오른쪽 영역에 목적지명, 남은 거리, 도착 시각, 내 위치 마커, 안내 종료 버튼이 표시됐다
+- 확인한 `NaviHelper`와 `navi-data` AAR의 시그니처에서는 지도 위에 다른 차를 그리는 API를 찾지 못했다. SDK 전체에 없다는 확인은 아니다
+- `NaviHelper.getInternalApi().updateOccupiedRegion(Rect)`는 존재하지만 문서가 없고 동작은 확인하지 못했다
+
+### 기획에 미치는 영향 (확인된 것과 추론을 구분한다)
+- **확인됨**: 단일 에뮬레이터에서 `requestRoute`는 `cancelRoute` 없이 새 목적지로 교체된다. 확정까지 수 초 걸린다
+- **추론**: 그룹의 각 멤버 앱이 같은 목적지로 `requestRoute`를 호출하면 목적지 동기화가 된다. 여러 차량 사이의 전달은 시험하지 않았다(2대 동시 실행 미시험, 서버 통신만 확인). UI에는 "재탐색 중" 상태가 필요하다
+- **미확인**: 실제 도착 이벤트. 데모에서는 가상 멤버(`FakeConvoyServer`)로 대신하되, 실제 이벤트 수신은 추가 확인이 필요하다고 기획서에 밝힌다
+- **확인된 범위에서의 판단**: 일행 위치를 지도에 표시하려면 SDK가 아닌 다른 수단이 필요해 보인다. Convoy 자체 화면은 목록과 상태 표시 중심으로 계획하되, 다른 수단의 가능성은 따로 확인한다
