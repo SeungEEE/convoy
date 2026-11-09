@@ -8,6 +8,7 @@ import com.car.convoy.domain.Gear
 import com.car.convoy.domain.GearEvent
 import com.car.convoy.domain.GroupEvent
 import com.car.convoy.domain.GroupSession
+import com.car.convoy.domain.GroupStatus
 import com.car.convoy.domain.MemberEventResult
 import com.car.convoy.domain.gearEvent
 import com.car.convoy.domain.port.NaviPort
@@ -48,10 +49,11 @@ class GroupController(
     }
 
     /**
-     * SPEC R11-19: 현재 그룹 목적지를 내 내비에만 다시 요청한다.
+     * SPEC R11-19: 실패 표시가 있고 그룹이 ACTIVE일 때만 현재 그룹 목적지를 내 내비에만 다시 요청한다.
      * shouldSyncDestination을 거치지 않고, 그룹 상태와 가상 멤버는 건드리지 않는다.
      */
     fun retryMyRoute() {
+        if (!myRouteFailed || session.status != GroupStatus.ACTIVE) return
         val destination = session.destination ?: return
         myRouteFailed = false
         myNavi.requestRoute(destination)
