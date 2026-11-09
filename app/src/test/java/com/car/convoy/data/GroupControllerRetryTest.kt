@@ -61,4 +61,39 @@ class GroupControllerRetryTest {
         c.setDestination(Destination("강남역", "서울 강남구 강남대로 396", 37.4979, 127.0276))
         assertFalse(c.myRouteFailed)
     }
+
+    // R11-19: 실패 표시가 없으면 재요청하지 않는다.
+    @Test fun retry_without_failure_does_nothing() {
+        c.setDestination(dest)
+        navi.requested.clear()
+        c.retryMyRoute()
+        assertEquals(emptyList<Destination>(), navi.requested)
+    }
+
+    // R11-19, R11-15: 그룹이 FINISHED면 재요청하지 않는다.
+    @Test fun retry_in_finished_group_does_nothing() {
+        c.setDestination(dest)
+        scheduler.advanceBy(6_000)
+        c.onRouteStarted("서울역")
+        c.server.arrive("m1")
+        c.server.arrive("m2")
+        c.onDestinationArrived("서울역", "서울 용산구 한강대로 405")
+        assertEquals(com.car.convoy.domain.GroupStatus.FINISHED, c.session.status)
+        c.onMyRouteFailed()
+        navi.requested.clear()
+        c.retryMyRoute()
+        assertEquals(emptyList<Destination>(), navi.requested)
+    }
+
+    // R11-19: 재요청도 실패하면 다시 실패를 알리고, 또 재요청할 수 있다.
+    @Test fun retry_failure_is_flagged_again() {
+        c.setDestination(dest)
+        c.onMyRouteFailed()
+        c.retryMyRoute()
+        c.onMyRouteFailed()
+        assertTrue(c.myRouteFailed)
+        navi.requested.clear()
+        c.retryMyRoute()
+        assertEquals(listOf(dest), navi.requested)
+    }
 }
