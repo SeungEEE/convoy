@@ -84,3 +84,16 @@
 - **추론**: 그룹의 각 멤버 앱이 같은 목적지로 `requestRoute`를 호출하면 목적지 동기화가 된다. 여러 차량 사이의 전달은 시험하지 않았다(2대 동시 실행 미시험, 서버 통신만 확인). UI에는 "재탐색 중" 상태가 필요하다
 - **미확인**: 실제 도착 이벤트. 데모에서는 가상 멤버(`FakeConvoyServer`)로 대신하되, 실제 이벤트 수신은 추가 확인이 필요하다고 기획서에 밝힌다
 - **확인된 범위에서의 판단**: 일행 위치를 지도에 표시하려면 SDK가 아닌 다른 수단이 필요해 보인다. Convoy 자체 화면은 목록과 상태 표시 중심으로 계획하되, 다른 수단의 가능성은 따로 확인한다
+
+## 작업 14 어댑터 확인 (2026-11-09, `feat/group-adapters`, Pleos Emulator 2.1.0)
+`NaviHelperAdapter`, `VehicleGearSource`, `FakeConvoyServer`를 앱에 붙이고 `adb shell am start -n com.car.convoy/.MainActivity --es demo <명령>`(`dest:seoul`, `dest:gangnam`, `depart:m1`, `arrive:m1`)으로 시험했다. 로그는 `logcat -s Convoy`로 읽었다. 그룹은 나(`me`, 리더, 실제 SDK)와 가상 멤버 `m1`, `m2`다.
+
+| 확인 | 결과 |
+|---|---|
+| `requestRoute` 퍼미션 | `NAVI_ROUTE`만으로는 `SecurityException: Permission [pleos.car.permission.NAVI_ROUTE_SEARCH] is required`. `NAVI_ROUTE_SEARCH`를 추가하자 동작했다 |
+| `RouteStartInfo.name` (R11-17) | **요청한 `poiName`이 그대로 왔다.** "서울역"으로 요청 → `name=[서울역]`(3회). 요청부터 `onRouteStarted`까지 6.4~6.7초 |
+| 재탐색 중 목적지 재변경 | `dest:gangnam` 2초 뒤 `dest:seoul`: 각 요청마다 `onRouteCancelled`가 왔고 `onRouteStarted`는 서울역 한 번만 왔다. 강남역에 대한 늦은 `onRouteStarted`는 이번에는 오지 않았다(늦은 이벤트가 절대 오지 않는다는 뜻은 아니다). 가상 멤버는 두 번째 요청 기준으로 6초 뒤 `DRIVING`이 됐다 |
+| 가상 멤버 출발·도착 | `arrive:m1`, `arrive:m2`로 `ARRIVED`, `SHARE_ARRIVED`. 내 차는 도착 이벤트를 유도하지 못해(R11-8) 그룹은 `ACTIVE`로 남았다 |
+| 안내 중 `requestRoute` 뒤 화면 | **안내가 진행 중인 상태에서 새 `requestRoute`를 보내면 1초 안에 내비 앱(`ai.umos.maps.android.navigation.app`)이 전면이 됐다**(2회, `dumpsys activity`의 `topResumedActivity`로 확인). 위 "그룹 주행 검증"의 "가져가지 않았다"는 안내가 없던 상태의 첫 요청이었다. 어느 조건이 차이를 만드는지는 더 확인해야 한다 |
+| 기어 구독 | 앱 시작 시 `GEAR_PARK`가 왔다. `registerGearSelection`은 deprecated 경고("use the Google GEAR_SELECTION property")가 나지만 동작한다 |
+| Virtual Console 기어 HTTP | 콘솔 페이지가 `PUT /vehicle/gear?gear=Drive`를 쓴다. adb forward 뒤 직접 호출하면 503이고 `/vehicle/state`의 `gear.bridge_ready`가 1분 넘게 `false`였다. 그래서 P→D 출발은 에뮬레이터에서 확인하지 못했고 단위 테스트로만 확인했다 |
