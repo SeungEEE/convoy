@@ -17,7 +17,9 @@ fun nextMemberState(state: GroupMemberState, event: GroupEvent): MemberTransitio
     when (state to event) {
         GroupMemberState.IDLE to GroupEvent.LEADER_SET_DESTINATION,
         GroupMemberState.DRIVING to GroupEvent.LEADER_SET_DESTINATION,
-        GroupMemberState.ARRIVED to GroupEvent.LEADER_SET_DESTINATION ->
+        GroupMemberState.ARRIVED to GroupEvent.LEADER_SET_DESTINATION,
+        // 재탐색 중에 목적지가 다시 바뀌면 새 목적지로 다시 요청한다.
+        GroupMemberState.REROUTING to GroupEvent.LEADER_SET_DESTINATION ->
             MemberTransition(GroupMemberState.REROUTING, MemberEffect.REQUEST_ROUTE)
 
         GroupMemberState.REROUTING to GroupEvent.ROUTE_STARTED ->
