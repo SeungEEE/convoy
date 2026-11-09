@@ -1,4 +1,4 @@
-package com.car.convoy.data
+package com.car.convoy.domain.port
 
 import com.car.convoy.domain.Destination
 

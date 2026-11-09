@@ -1,7 +1,7 @@
 package com.car.convoy.domain
 
-import com.car.convoy.data.ConvoyServer
-import com.car.convoy.data.NaviPort
+import com.car.convoy.domain.port.ConvoyServer
+import com.car.convoy.domain.port.NaviPort
 import com.car.convoy.domain.GroupMemberState.*
 import org.junit.Assert.assertEquals
 import org.junit.Test
