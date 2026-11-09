@@ -23,5 +23,6 @@ fun distanceMeters(a: Destination, b: Destination): Double {
     val dLat = lat2 - lat1
     val dLon = Math.toRadians(b.longitude - a.longitude)
     val h = sin(dLat / 2).pow(2) + cos(lat1) * cos(lat2) * sin(dLon / 2).pow(2)
-    return 2 * EARTH_RADIUS_METERS * asin(sqrt(h))
+    // 부동소수점 오차로 h가 [0, 1]을 조금 벗어나면 asin이 NaN을 내므로 범위를 묶는다.
+    return 2 * EARTH_RADIUS_METERS * asin(sqrt(h.coerceIn(0.0, 1.0)))
 }

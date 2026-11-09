@@ -16,6 +16,11 @@ class GroupSession(
     destination: Destination? = null,
     status: GroupStatus = GroupStatus.ACTIVE,
 ) {
+    init {
+        require(leaderId in memberIds) { "memberIds에 리더($leaderId)가 없다 (R11-11)" }
+        require(memberIds.toSet().size == memberIds.size) { "memberIds에 중복 ID가 있다: $memberIds" }
+    }
+
     var destination: Destination? = destination
         private set
 
