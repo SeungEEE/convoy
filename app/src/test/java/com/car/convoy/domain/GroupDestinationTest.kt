@@ -85,6 +85,13 @@ class GroupDestinationTest {
         assertStates(s, REROUTING, listOf(leader))
     }
 
+    // R11-11: 리더도 멤버에 들어가야 한다. 빠지거나 중복이면 세션을 만들지 않는다.
+    @Test(expected = IllegalArgumentException::class)
+    fun session_without_leader_is_rejected() { session(memberIds = listOf("m1", "m2")) }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun session_with_duplicate_member_is_rejected() { session(memberIds = listOf(leader, "m1", "m1")) }
+
     @Test fun finished_group_ignores_destination_change() {
         val s = session(status = GroupStatus.FINISHED)
         s.setDestination(leader, target(37.5045))
