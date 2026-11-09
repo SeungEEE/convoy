@@ -22,7 +22,7 @@ data class GroupUpdate(val memberId: String, val event: GroupEvent, val result: 
 class GroupController(
     private val myId: String,
     memberIds: List<String>,
-    myNavi: NaviPort,
+    private val myNavi: NaviPort,
     scheduler: Scheduler,
     private val onUpdate: (GroupUpdate) -> Unit = {},
 ) {
@@ -31,7 +31,31 @@ class GroupController(
 
     private var lastGear = Gear.UNKNOWN
 
-    fun setDestination(destination: Destination) = session.setDestination(myId, destination)
+    /** SPEC R11-19: 내 차의 경로 요청이 실패했는가. 화면이 알리고 [retryMyRoute]를 제공한다. */
+    var myRouteFailed = false
+        private set
+
+    fun setDestination(destination: Destination) {
+        val before = session.destination
+        session.setDestination(myId, destination)
+        // 목적지가 실제로 바뀌었으면(SYNC) 새 요청이 나갔으므로 이전 실패 표시를 지운다.
+        if (session.destination != before) myRouteFailed = false
+    }
+
+    /** SPEC R11-19: 어댑터가 SDK 예외로 경로 요청 실패를 알린다. 그룹 상태는 바꾸지 않는다. */
+    fun onMyRouteFailed() {
+        myRouteFailed = true
+    }
+
+    /**
+     * SPEC R11-19: 현재 그룹 목적지를 내 내비에만 다시 요청한다.
+     * shouldSyncDestination을 거치지 않고, 그룹 상태와 가상 멤버는 건드리지 않는다.
+     */
+    fun retryMyRoute() {
+        val destination = session.destination ?: return
+        myRouteFailed = false
+        myNavi.requestRoute(destination)
+    }
 
     /** SPEC R11-17: 마지막 요청과 이름이 같은 경로 시작만 받는다. */
     fun onRouteStarted(name: String?) {
