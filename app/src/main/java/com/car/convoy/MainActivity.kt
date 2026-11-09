@@ -83,7 +83,8 @@ class MainActivity : ComponentActivity() {
 
         refresh()
         runCatching { gear.start() }.onFailure { log("Vehicle 시작 실패: $it") }
-        navi.start { handleDemo(intent) }
+        // 초기화 성공 콜백의 스레드는 보장되지 않으므로 메인 스레드로 옮긴다(GroupController는 한 스레드에서만 부른다).
+        navi.start { scheduler.post { handleDemo(intent) } }
     }
 
     override fun onNewIntent(intent: Intent) {
