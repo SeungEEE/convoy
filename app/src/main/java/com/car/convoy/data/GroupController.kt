@@ -36,14 +36,25 @@ class GroupController(
     var myRouteFailed = false
         private set
 
+    /** SPEC R11-19: 지금 [retryMyRoute]가 요청을 보내는가. 화면은 이 값일 때만 [다시 요청]을 보여 준다. */
+    val canRetryMyRoute: Boolean
+        get() = myRouteFailed && session.status == GroupStatus.ACTIVE && session.destination != null
+
     fun setDestination(destination: Destination) {
         val before = session.destination
+        val failedBefore = myRouteFailed
+        // 새 요청이 나가면 그 결과로 실패 표시를 다시 정한다. 실패는 요청 도중에 onMyRouteFailed로 바로 온다.
+        myRouteFailed = false
         session.setDestination(myId, destination)
-        // 목적지가 실제로 바뀌었으면(SYNC) 새 요청이 나갔으므로 이전 실패 표시를 지운다.
-        if (session.destination != before) myRouteFailed = false
+        // 요청이 나가지 않았으면(IGNORE_SAME, NOT_LEADER, FINISHED) 이전 실패 표시를 그대로 둔다.
+        if (session.destination == before) myRouteFailed = failedBefore
     }
 
-    /** SPEC R11-19: 어댑터가 SDK 예외로 경로 요청 실패를 알린다. 그룹 상태는 바꾸지 않는다. */
+    /**
+     * SPEC R11-19: 어댑터가 SDK 예외로 경로 요청 실패를 알린다. 그룹 상태는 바꾸지 않는다.
+     * 예외는 requestRoute 호출 중에 동기로 나므로, 어댑터는 이 메서드를 큐에 넣지 않고 바로 부른다
+     * (늦게 도착한 이전 요청의 실패가 새 요청의 실패로 보이지 않게).
+     */
     fun onMyRouteFailed() {
         myRouteFailed = true
     }
@@ -53,7 +64,7 @@ class GroupController(
      * shouldSyncDestination을 거치지 않고, 그룹 상태와 가상 멤버는 건드리지 않는다.
      */
     fun retryMyRoute() {
-        if (!myRouteFailed || session.status != GroupStatus.ACTIVE) return
+        if (!canRetryMyRoute) return
         val destination = session.destination ?: return
         myRouteFailed = false
         myNavi.requestRoute(destination)
