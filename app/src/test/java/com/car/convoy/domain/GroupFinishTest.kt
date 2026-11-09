@@ -102,4 +102,13 @@ class GroupFinishTest {
     fun leader_set_destination_is_not_a_member_event() {
         drivingSession().onMemberEvent(leader, LEADER_SET_DESTINATION)
     }
+
+    // R11-15: FINISHED면 모든 이벤트를 무시한다. 목적지 변경 이벤트도 예외 없이 무시한다.
+    @Test fun finished_session_ignores_leader_set_destination_event() {
+        val s = drivingSession()
+        ids.forEach { s.onMemberEvent(it, NAVI_ARRIVED) }
+        assertEquals(MemberEventResult(null, null), s.onMemberEvent(leader, LEADER_SET_DESTINATION))
+        assertEquals(ARRIVED, s.memberState(leader))
+        assertEquals(FINISHED, s.status)
+    }
 }
