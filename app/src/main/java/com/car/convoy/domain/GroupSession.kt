@@ -74,8 +74,9 @@ class GroupSession(
      * FINISHED면 모든 이벤트를 무시한다. 목적지 변경은 [setDestination]으로만 한다.
      */
     fun onMemberEvent(memberId: String, event: GroupEvent): MemberEventResult {
-        require(event != GroupEvent.LEADER_SET_DESTINATION) { "목적지 변경은 setDestination으로 한다" }
+        // 종료 확인이 먼저다: FINISHED면 목적지 변경 이벤트를 포함해 모든 이벤트를 무시한다(R11-15).
         if (status == GroupStatus.FINISHED) return MemberEventResult(null, null)
+        require(event != GroupEvent.LEADER_SET_DESTINATION) { "목적지 변경은 setDestination으로 한다" }
 
         val transition = nextMemberState(states.getValue(memberId), event)
         states[memberId] = transition.state
