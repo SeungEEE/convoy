@@ -254,6 +254,9 @@ R5~R7의 규칙을 이어 붙인 흐름이다. 새 규칙은 최소로 하고, �
 - R11-13. 목적지는 SDK와 무관한 `Destination(name, address, latitude, longitude)`로 나타낸다. R5-3의 "현재 목적지와 거리"는 두 좌표 사이의 직선 거리(하버사인, 지구 반지름 6,371,000m)다. SDK의 `RouteInfo`로 바꾸는 일은 어댑터(작업 14)가 한다. (제안)
 - R11-14. 목적지 전파: 리더가 목적지를 정하면 `ConvoyServer`가 리더를 포함한 그룹의 각 멤버에게 목적지를 전달하고, 받은 차는 자기 `NaviPort.requestRoute(destination)`를 호출한다. 리더 앱이 다른 차의 내비를 직접 호출하지 않는다. 데모에서는 `FakeConvoyServer`가 가상 멤버의 수신을 흉내 낸다. (제안)
 - R11-15. 그룹 상태는 `ACTIVE`, `FINISHED` 두 가지다. `ACTIVE`에서 멤버 상태가 바뀐 뒤 R11-7 변환으로 `isGroupFinished`가 true가 되면, `FINISH_GROUP`을 한 번 내고 `FINISHED`가 된다. `FINISHED`에서는 목적지 변경(R11-9)을 포함한 모든 이벤트를 무시하고, `FINISH_GROUP`도 다시 내지 않는다. (제안)
+- R11-16. 어댑터의 기어 변환: `GEAR_PARK`→`PARK`, `GEAR_DRIVE`와 `GEAR_1`~`GEAR_9`→`DRIVE`, `GEAR_NEUTRAL`→`NEUTRAL`, `GEAR_REVERSE`→`REVERSE`, `GEAR_UNKNOWN`과 null→`UNKNOWN`. `GEAR_1`~`GEAR_9`는 R7의 `DRIVE`와 같게 취급한다. 따라서 `GEAR_PARK`에서 `GEAR_1`로 바뀌어도 R7-1의 출발(`DEPARTED`)이다. (제안)
+- R11-17. 어댑터는 `onRouteStarted`의 `RouteStartInfo.name`이 마지막으로 요청한 목적지의 `name`과 같을 때만 `ROUTE_STARTED`를 만든다. `name`에 무엇이 오는지는 작업 14에서 에뮬레이터로 확인하고, 목적지 이름이 아니면 이 규칙을 지우고 R11-3 범위로 돌린다. 이름 비교는 공백과 대소문자를 바꾸지 않는 정확한 문자열 일치다. R11-4의 도착 이벤트 비교도 같다. R11-4와 마찬가지로 같은 이름의 다른 목적지로 다시 요청한 경우는 구분하지 못한다. (제안)
+- R11-18. `FakeConvoyServer`의 가상 멤버는 목적지를 받으면 6초 뒤 `ROUTE_STARTED`를 만든다(실측 5.3~6.7초). 가상 멤버의 출발(`GEAR_DEPARTED`)과 도착(`NAVI_ARRIVED`)은 시연자가 정한 때에 만든다(작업 14에서는 adb 명령, 작업 15 뒤에는 시연용 버튼). 이것은 R11-8의 데모용 대체 이벤트다. 가상 멤버가 `REROUTING` 중에 새 목적지를 받으면, 이전에 예약한 `ROUTE_STARTED`를 취소하고 새 요청 기준으로 다시 6초를 센다. (제안)
 
 `distanceMeters(a, b)`: 두 `Destination` 좌표 사이의 하버사인 거리(m). 허용 오차는 ±0.01m다. (제안)
 
@@ -322,12 +325,13 @@ com.car.convoy
 - [x] 작업 11. `accidentAction` (R8, 7행)
 - [x] 작업 12. `nextFamilyState` (R9, 5행)
 - [x] 작업 13. `canPerform` (R10, 14행)
-- [ ] 작업 14. `data/` 어댑터와 `FakeConvoyServer` (에뮬레이터에서 수동 확인)
+- [ ] 작업 14. 그룹 주행 어댑터: `NaviPort`(NaviHelper), `VehiclePort`(기어), `FakeConvoyServer` 가상 멤버, `GroupSession` 연결 (R11-16~18, 에뮬레이터에서 수동 확인)
 - [ ] 작업 15. `ui/` 화면 (친구 지도, 그룹, 사고 확인, 가족 알림)
 - [ ] 작업 16. 시나리오 시연: 목적지 변경 → 일행 재탐색 → 도착 공유, 사고 의심 → 확인 → 가족 알림
 - [x] 작업 17. `nextMemberState` (R11, 11행). (선행: 작업 14 전에 한다)
 - [x] 작업 18. 그룹 목적지 전파: 포트(`NaviPort`, `ConvoyServer`)의 가짜 구현으로, 리더가 목적지를 바꾸면 멤버 N명 모두에게 `requestRoute`가 호출되고 `NOT_LEADER`·`IGNORE_SAME`이면 호출되지 않음을 테스트한다 (R5, R11-1). (선행: 작업 14 전에 한다)
 - [x] 작업 19. 그룹 종료: 전원 `ARRIVED`면 `FINISH_GROUP`이 나오고, 종료 뒤 목적지 변경은 무시됨을 테스트한다 (R7-4, R11-5, R11-9). (선행: 작업 14 전에 한다)
+- [ ] 작업 20. 사고 의심 어댑터: 경고등 구독, 30초 타이머(`Clock`), 시간 초과 시 위치(`NaviPort` 현재 위치)와 경고등 정보를 서버 포트로 가족에게 보내는 연결 (R8, 에뮬레이터에서 수동 확인)
 
 ## 4장. P1 (2차 PT 전, 이번 명세에 포함하지 않음)
 방향지시등 공유, 근접·이탈 알림, 휴게·충전 조율(배터리 `getEvBatteryStateOfCharge`), 주행 상태 공유, 친구별 숨기기. P0 테스트가 모두 초록이 된 뒤 같은 방식으로 명세를 추가한다.
