@@ -1,6 +1,6 @@
 package com.car.convoy.domain
 
-import com.car.convoy.data.ConvoyServer
+import com.car.convoy.domain.port.ConvoyServer
 
 /** SPEC R11-15. 그룹 상태. */
 enum class GroupStatus { ACTIVE, FINISHED }
