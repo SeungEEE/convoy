@@ -292,13 +292,15 @@ R5~R7의 규칙을 이어 붙인 흐름이다. 새 규칙은 최소로 하고, �
 ```
 com.car.convoy
 ├── domain/   SDK와 무관한 규칙. 위 함수와 enum, 상태 전이. 단위 테스트의 대상
-├── data/     NaviPort, VehiclePort, ConvoyServer 인터페이스와 구현
+│   └── port/     NaviPort, VehiclePort, ConvoyServer 인터페이스 (domain이 정하고 data가 구현한다)
+├── data/     포트의 구현
 │   ├── navi/     NaviHelper 어댑터 (requestRoute, cancelRoute, 위치 2초 폴링, 도착 이벤트)
 │   ├── vehicle/  Vehicle 어댑터 (기어, 방향지시등, 경고등 구독)
 │   └── server/   FakeConvoyServer (인메모리 목업. 가상 멤버를 시뮬레이션)
 └── ui/       Jetpack Compose 화면
 ```
 
+- 의존 방향은 ui → data → domain이다. domain은 data와 ui를 import하지 않는다. (제안)
 - SDK 어댑터는 인터페이스 뒤에 두고, 테스트에서는 가짜 구현을 쓴다.
 - 목업 서버는 에뮬레이터 1대에서 가상 멤버(위치, 상태, 응답)를 만들어 시나리오를 시연한다. 실제 서버는 확장 계획이다.
 - 시간은 `Clock` 인터페이스로 주입해, 30초와 600초 규칙을 시계 없이 테스트한다.
