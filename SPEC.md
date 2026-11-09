@@ -257,6 +257,7 @@ R5~R7의 규칙을 이어 붙인 흐름이다. 새 규칙은 최소로 하고, �
 - R11-16. 어댑터의 기어 변환: `GEAR_PARK`→`PARK`, `GEAR_DRIVE`와 `GEAR_1`~`GEAR_9`→`DRIVE`, `GEAR_NEUTRAL`→`NEUTRAL`, `GEAR_REVERSE`→`REVERSE`, `GEAR_UNKNOWN`과 null→`UNKNOWN`. `GEAR_1`~`GEAR_9`는 R7의 `DRIVE`와 같게 취급한다. 따라서 `GEAR_PARK`에서 `GEAR_1`로 바뀌어도 R7-1의 출발(`DEPARTED`)이다. (제안)
 - R11-17. 어댑터는 `onRouteStarted`의 `RouteStartInfo.name`이 마지막으로 요청한 목적지의 `name`과 같을 때만 `ROUTE_STARTED`를 만든다. `name`에 무엇이 오는지는 작업 14에서 에뮬레이터로 확인하고, 목적지 이름이 아니면 이 규칙을 지우고 R11-3 범위로 돌린다. 이름 비교는 공백과 대소문자를 바꾸지 않는 정확한 문자열 일치다. R11-4의 도착 이벤트 비교도 같다. R11-4와 마찬가지로 같은 이름의 다른 목적지로 다시 요청한 경우는 구분하지 못한다. (제안)
 - R11-18. `FakeConvoyServer`의 가상 멤버는 목적지를 받으면 6초 뒤 `ROUTE_STARTED`를 만든다(실측 5.3~6.7초). 가상 멤버의 출발(`GEAR_DEPARTED`)과 도착(`NAVI_ARRIVED`)은 시연자가 정한 때에 만든다(작업 14에서는 adb 명령, 작업 15 뒤에는 시연용 버튼). 이것은 R11-8의 데모용 대체 이벤트다. 가상 멤버가 `REROUTING` 중에 새 목적지를 받으면, 이전에 예약한 `ROUTE_STARTED`를 취소하고 새 요청 기준으로 다시 6초를 센다. (제안)
+- R11-19. 내 차의 `requestRoute`가 실패하면(SDK 예외) 그룹 상태와 다른 멤버는 바꾸지 않고, 실패를 화면에 알린다. 리더는 [다시 요청]으로 현재 그룹 목적지를 내 내비에만 다시 요청할 수 있다. 이 재요청은 `shouldSyncDestination`을 거치지 않는다(같은 목적지라 `IGNORE_SAME`이 되므로). (제안)
 
 `distanceMeters(a, b)`: 두 `Destination` 좌표 사이의 하버사인 거리(m). 허용 오차는 ±0.01m다. (제안)
 
