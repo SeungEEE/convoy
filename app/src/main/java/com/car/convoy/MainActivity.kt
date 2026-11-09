@@ -37,6 +37,7 @@ private val DESTINATIONS = mapOf(
  *   adb shell am start -n com.car.convoy/.MainActivity --es demo dest:seoul
  *   adb shell am start -n com.car.convoy/.MainActivity --es demo depart:m1
  *   adb shell am start -n com.car.convoy/.MainActivity --es demo arrive:m1
+ *   adb shell am start -n com.car.convoy/.MainActivity --es demo retry
  */
 class MainActivity : ComponentActivity() {
 
@@ -55,6 +56,8 @@ class MainActivity : ComponentActivity() {
             applicationContext,
             routeStarted = { name -> scheduler.post { controller.onRouteStarted(name) } },
             destinationArrived = { n, a -> scheduler.post { controller.onDestinationArrived(n, a) } },
+            // requestRoute 예외는 호출 중 동기로 오므로 큐에 넣지 않고 바로 알린다(R11-19). 화면 갱신만 나중에 한다.
+            routeFailed = { controller.onMyRouteFailed(); scheduler.post { refresh() } },
             log = ::log,
         )
         controller = GroupController(ME, MEMBERS, navi, scheduler) { u ->
@@ -109,6 +112,7 @@ class MainActivity : ComponentActivity() {
                 "dest" -> controller.setDestination(DESTINATIONS.getValue(arg!!))
                 "depart" -> controller.server.depart(arg!!)
                 "arrive" -> controller.server.arrive(arg!!)
+                "retry" -> controller.retryMyRoute()
                 else -> log("모르는 명령: $demo")
             }
         }.onFailure { log("명령 실패: $it") }
@@ -118,7 +122,12 @@ class MainActivity : ComponentActivity() {
     private fun refresh() {
         val s = controller.session
         states.value = "그룹 ${s.status} · 목적지 ${s.destination?.name ?: "없음"}\n" +
-            MEMBERS.joinToString("   ") { "$it=${s.memberState(it)}" }
+            MEMBERS.joinToString("   ") { "$it=${s.memberState(it)}" } +
+            when {
+                controller.canRetryMyRoute -> "\n내 차 경로 요청 실패 · retry로 다시 요청"
+                controller.myRouteFailed -> "\n내 차 경로 요청 실패"
+                else -> ""
+            }
     }
 
     private fun log(message: String) {

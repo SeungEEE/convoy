@@ -326,7 +326,7 @@ com.car.convoy
 - [x] 작업 11. `accidentAction` (R8, 7행)
 - [x] 작업 12. `nextFamilyState` (R9, 5행)
 - [x] 작업 13. `canPerform` (R10, 14행)
-- [ ] 작업 14. 그룹 주행 어댑터: `NaviPort`(NaviHelper), `VehiclePort`(기어), `FakeConvoyServer` 가상 멤버, `GroupSession` 연결 (R11-16~18, 에뮬레이터에서 수동 확인)
+- [x] 작업 14. 그룹 주행 어댑터: `NaviPort`(NaviHelper), `VehiclePort`(기어), `FakeConvoyServer` 가상 멤버, `GroupSession` 연결 (R11-16~18, 에뮬레이터에서 수동 확인: 경로 요청·경로 시작·가상 멤버 확인, 내 차 기어 출발과 내 차 도착은 미확인. `docs/sdk-findings.md`)
 - [ ] 작업 15. `ui/` 화면 (친구 지도, 그룹, 사고 확인, 가족 알림)
 - [ ] 작업 16. 시나리오 시연: 목적지 변경 → 일행 재탐색 → 도착 공유, 사고 의심 → 확인 → 가족 알림
 - [x] 작업 17. `nextMemberState` (R11, 11행). (선행: 작업 14 전에 한다)

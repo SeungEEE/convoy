@@ -18,6 +18,7 @@ class NaviHelperAdapter(
     context: Context,
     private val routeStarted: (name: String?) -> Unit,
     private val destinationArrived: (name: String?, address: String?) -> Unit,
+    private val routeFailed: () -> Unit,
     private val log: (String) -> Unit,
 ) : NaviPort {
 
@@ -54,7 +55,8 @@ class NaviHelperAdapter(
 
     override fun requestRoute(destination: Destination) {
         log("requestRoute name=[${destination.name}] address=[${destination.address}]")
-        // SDK 예외(퍼미션 누락 등)가 GroupSession의 멤버 순회를 끊지 않도록 여기서 받고 남긴다.
+        // SDK 예외(퍼미션 누락 등)가 GroupSession의 멤버 순회를 끊지 않도록 여기서 받고,
+        // 실패는 routeFailed로 호출 중에 바로 알린다(R11-19). 이 메서드는 메인 스레드에서만 불린다.
         runCatching { navi.requestRoute(
             RouteInfo(
                 latitude = destination.latitude,
@@ -66,6 +68,6 @@ class NaviHelperAdapter(
                 address = destination.address,
                 poiSubId = "0",
             )
-        ) }.onFailure { log("requestRoute 실패: $it") }
+        ) }.onFailure { log("requestRoute 실패: $it"); routeFailed() }
     }
 }
