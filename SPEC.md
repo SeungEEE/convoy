@@ -319,12 +319,12 @@ com.car.convoy
 - [x] 작업 10. `isAccidentSuspected` (R8, 6행)
 - [x] 작업 11. `accidentAction` (R8, 7행)
 - [x] 작업 12. `nextFamilyState` (R9, 5행)
-- [ ] 작업 13. `canPerform` (R10, 14행)
+- [x] 작업 13. `canPerform` (R10, 14행)
 - [ ] 작업 14. `data/` 어댑터와 `FakeConvoyServer` (에뮬레이터에서 수동 확인)
 - [ ] 작업 15. `ui/` 화면 (친구 지도, 그룹, 사고 확인, 가족 알림)
 - [ ] 작업 16. 시나리오 시연: 목적지 변경 → 일행 재탐색 → 도착 공유, 사고 의심 → 확인 → 가족 알림
-- [ ] 작업 17. `nextMemberState` (R11, 11행). (선행: 작업 14 전에 한다)
-- [ ] 작업 18. 그룹 목적지 전파: 포트(`NaviPort`, `ConvoyServer`)의 가짜 구현으로, 리더가 목적지를 바꾸면 멤버 N명 모두에게 `requestRoute`가 호출되고 `NOT_LEADER`·`IGNORE_SAME`이면 호출되지 않음을 테스트한다 (R5, R11-1). (선행: 작업 14 전에 한다)
+- [x] 작업 17. `nextMemberState` (R11, 11행). (선행: 작업 14 전에 한다)
+- [x] 작업 18. 그룹 목적지 전파: 포트(`NaviPort`, `ConvoyServer`)의 가짜 구현으로, 리더가 목적지를 바꾸면 멤버 N명 모두에게 `requestRoute`가 호출되고 `NOT_LEADER`·`IGNORE_SAME`이면 호출되지 않음을 테스트한다 (R5, R11-1). (선행: 작업 14 전에 한다)
 - [ ] 작업 19. 그룹 종료: 전원 `ARRIVED`면 `FINISH_GROUP`이 나오고, 종료 뒤 목적지 변경은 무시됨을 테스트한다 (R7-4, R11-5, R11-9). (선행: 작업 14 전에 한다)
 
 ## 4장. P1 (2차 PT 전, 이번 명세에 포함하지 않음)
