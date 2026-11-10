@@ -120,3 +120,11 @@
 | 켜진 채 다시 옴 / 껐다 켬 (R8-6) | 이전 확인 뒤 경고등이 켜진 채 다시 오자 새로 묻지 않았고, 껐다 켜자 새 확인이 시작됐다 |
 | [괜찮아요] | 3초 만에 응답하자 전송하지 않았다. 이때 이전 확인의 보고서가 `lastSentReport`에 남아 있던 버그를 발견해 고쳤다 |
 | 앱이 스스로 앞으로 나오기 (R8-11) | 내비가 앞에 있는 상태에서 경고등이 들어오자 **Convoy 화면이 앞으로 나왔다**(2회, 스크린샷). 같은 조건에서 경고등이 없으면 내비가 14초 넘게 앞에 있었다(대조 1회). **그런데 시스템 로그는 `Background activity launch blocked ... (BAL_BLOCK)`로 기록했다.** 내비 앱은 `SYSTEM_ALERT_WINDOW` 권한으로 허용(`BAL_ALLOW_SAW_PERMISSION`)됐다. 보이는 결과와 로그가 어긋나므로, 실제 차량에서도 앞으로 나온다고 단정할 수 없다(추가 확인 필요) |
+
+### Virtual Console 브리지와 주행 중 화면 제한 (2026-11-10 추가)
+| 확인 | 결과 |
+|---|---|
+| 콘솔 브리지 활성화 | **브라우저로 `http://127.0.0.1:8088/`을 연 뒤에는** `/vehicle/state`의 `bridge_ready`, `emulator_active`가 `true`가 되고, 경고등(`PUT /vehicle/telltales/simulator?type=Airbag&state=On&color=Red`)과 기어(`PUT /vehicle/gear?gear=Drive`) HTTP가 200으로 동작했다. 페이지를 열기 전에는 503이었다(위 기록). 페이지를 여는 것이 조건인지는 추론이다 |
+| 경고등 SDK 경로 | 콘솔에서 Airbag을 On으로 바꾸자 `onTelltaleInfoUpdated`로 `[AIRBAG ON]`이 왔다. HTTP로 Off → On 하자 R8-6대로 새 확인이 시작됐고 30초 뒤 가족 전송까지 이어졌다 |
+| 기어 D | `PUT /vehicle/controls?brake=100&speed=0&accelerator=0`로 브레이크를 밟은 뒤 D를 보내야 앱에 `GEAR_DRIVE`가 왔다(브레이크 없이 보낸 1회는 오지 않았다). P→D에서 내 차가 `GEAR_DEPARTED`로 "주행 중"이 됐다 |
+| **주행 중 화면 제한** | 기어가 D이면 Pleos가 Convoy 화면 전체를 **"주행 중에는 사용할 수 없습니다."**로 가렸다. 액티비티에 `<meta-data android:name="distractionOptimized" android:value="true"/>`를 넣자 D에서도 화면이 보였고, 목적지 버튼은 R10대로 비활성("정차 중에 리더만 바꿀 수 있어요")이었다. 실제 차량에서 이 설정이 심사 없이 허용되는지는 모른다 |
