@@ -8,10 +8,17 @@ import com.car.convoy.domain.GroupStatus
 import com.car.convoy.domain.canPerform
 
 /** 멤버 목록의 한 줄. */
-data class MemberRow(val id: String, val name: String, val stateLabel: String, val isVirtual: Boolean)
+data class MemberRow(
+    val id: String,
+    val name: String,
+    val state: GroupMemberState,
+    val stateLabel: String,
+    val isVirtual: Boolean,
+)
 
 /** SPEC R11-20: 그룹 주행 화면에 보일 값. Compose 화면은 이 값만 그린다. */
 data class GroupScreenModel(
+    val groupStatusLabel: String,
     val destinationName: String?,
     val finished: Boolean,
     val members: List<MemberRow>,
@@ -44,10 +51,12 @@ fun groupScreenModel(
 ): GroupScreenModel {
     val active = session.status == GroupStatus.ACTIVE
     return GroupScreenModel(
+        groupStatusLabel = if (active) "그룹 주행 중" else "모두 도착했어요",
         destinationName = session.destination?.name,
         finished = session.status == GroupStatus.FINISHED,
         members = memberIds.map { id ->
-            MemberRow(id, names[id] ?: id, memberStateLabel(session.memberState(id)), isVirtual = id != myId)
+            val state = session.memberState(id)
+            MemberRow(id, names[id] ?: id, state, memberStateLabel(state), isVirtual = id != myId)
         },
         canChooseDestination = isLeader && active && canPerform(DriverAction.SET_GROUP_DESTINATION, gear),
         showRetry = canRetryMyRoute,

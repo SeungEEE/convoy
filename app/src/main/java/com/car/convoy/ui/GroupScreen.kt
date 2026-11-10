@@ -25,6 +25,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.car.convoy.domain.Destination
+import com.car.convoy.domain.GroupMemberState
 
 // 차량 화면은 160dpi라 1dp = 1px이다. 버튼 높이 80dp 이상, 본문 28sp 이상(R11-20, docs/sdk-findings.md).
 private val BUTTON_HEIGHT = 96.dp
@@ -34,12 +35,11 @@ private val Soft = Color(0xFF5A6575)
 private val Line = Color(0xFFDDE1E7)
 private val Accent = Color(0xFF1F4E8C)
 
-private fun stateColor(label: String): Color = when (label) {
-    "출발 전" -> Color(0xFF8A94A3)
-    "경로 찾는 중" -> Color(0xFFC98A00)
-    "주행 중" -> Color(0xFF1F6FD1)
-    "도착" -> Color(0xFF1D8A4F)
-    else -> Soft
+private fun stateColor(state: GroupMemberState): Color = when (state) {
+    GroupMemberState.IDLE -> Color(0xFF8A94A3)
+    GroupMemberState.REROUTING -> Color(0xFFC98A00)
+    GroupMemberState.DRIVING -> Color(0xFF1F6FD1)
+    GroupMemberState.ARRIVED -> Color(0xFF1D8A4F)
 }
 
 /** SPEC R11-20: 그룹 주행 화면. [model]만 그리고, 누름은 콜백으로 넘긴다. */
@@ -56,7 +56,7 @@ fun GroupScreen(
         horizontalArrangement = Arrangement.spacedBy(48.dp),
     ) {
         Column(Modifier.weight(1.15f), verticalArrangement = Arrangement.spacedBy(24.dp)) {
-            Text("그룹 주행", fontSize = 26.sp, color = Soft)
+            Text(model.groupStatusLabel, fontSize = BODY, color = Soft)
             Text(
                 model.destinationName?.let { "목적지  $it" } ?: "목적지를 골라 주세요",
                 fontSize = 44.sp, fontWeight = FontWeight.Bold, color = Ink,
@@ -71,7 +71,7 @@ fun GroupScreen(
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(20.dp)) {
             Text("목적지", fontSize = BODY, fontWeight = FontWeight.Bold, color = Ink)
             if (!model.canChooseDestination && !model.finished) {
-                Text("정차 중에 리더만 바꿀 수 있어요", fontSize = 24.sp, color = Soft)
+                Text("정차 중에 리더만 바꿀 수 있어요", fontSize = BODY, color = Soft)
             }
             PRESET_DESTINATIONS.forEach { d ->
                 Button(
@@ -103,9 +103,9 @@ private fun MemberCard(row: MemberRow) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(20.dp),
     ) {
-        Box(Modifier.size(22.dp).background(stateColor(row.stateLabel), CircleShape))
+        Box(Modifier.size(22.dp).background(stateColor(row.state), CircleShape))
         Text(row.name, fontSize = 34.sp, fontWeight = FontWeight.Bold, color = Ink, modifier = Modifier.weight(1f))
-        Text(row.stateLabel, fontSize = 34.sp, color = stateColor(row.stateLabel), fontWeight = FontWeight.Bold)
+        Text(row.stateLabel, fontSize = 34.sp, color = stateColor(row.state), fontWeight = FontWeight.Bold)
     }
 }
 
@@ -119,15 +119,15 @@ private fun DemoPanel(model: GroupScreenModel, onDepart: (String) -> Unit, onArr
             .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Text("시연용 · 가상 일행 조작", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color(0xFF8A5A00))
+        Text("시연용 · 가상 일행 조작", fontSize = BODY, fontWeight = FontWeight.Bold, color = Color(0xFF8A5A00))
         model.members.filter { it.id in model.demoMemberIds }.forEach { m ->
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(m.name, fontSize = 26.sp, color = Ink, modifier = Modifier.weight(1f))
+                Text(m.name, fontSize = BODY, color = Ink, modifier = Modifier.weight(1f))
                 OutlinedButton(onClick = { onDepart(m.id) }, modifier = Modifier.heightIn(min = 80.dp)) {
-                    Text("출발", fontSize = 24.sp)
+                    Text("출발", fontSize = BODY)
                 }
                 OutlinedButton(onClick = { onArrive(m.id) }, modifier = Modifier.heightIn(min = 80.dp)) {
-                    Text("도착", fontSize = 24.sp)
+                    Text("도착", fontSize = BODY)
                 }
             }
         }
