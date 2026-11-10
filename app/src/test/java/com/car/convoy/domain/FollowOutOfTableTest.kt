@@ -4,8 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 /**
- * SPEC R3 표에 없는 조합. R9처럼 표가 정하지 않은 경우는 상태를 바꾸지 않는다는 결정을 고정한다.
- * (SPEC에 이 규칙을 적기 전까지의 회귀 테스트)
+ * SPEC R3-5: 표에 없는 조합은 상태를 바꾸지 않는다.
  */
 class FollowOutOfTableTest {
 
