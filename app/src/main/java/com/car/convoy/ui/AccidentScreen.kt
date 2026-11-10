@@ -13,7 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
@@ -48,7 +48,8 @@ fun AccidentPrompt(model: AccidentScreenModel, onOk: () -> Unit) {
         contentAlignment = Alignment.Center,
     ) {
         Column(
-            modifier = Modifier.width(1100.dp).background(Color.White, RoundedCornerShape(24.dp)).padding(56.dp),
+            modifier = Modifier.widthIn(max = 1100.dp).fillMaxWidth().padding(horizontal = 40.dp)
+                .background(Color.White, RoundedCornerShape(24.dp)).padding(56.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(28.dp),
         ) {

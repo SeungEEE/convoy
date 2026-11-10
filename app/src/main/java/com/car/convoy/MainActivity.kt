@@ -56,6 +56,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var controller: GroupController
     private lateinit var accident: AccidentController
     private var wasChecking = false
+    private var countdown: com.car.convoy.data.Cancellable? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -191,14 +192,20 @@ class MainActivity : ComponentActivity() {
             log(accident.lastSentReport?.let { "가족에게 보냄: ${it.telltales} 위치=${it.location ?: "위치 확인 불가"}" } ?: "확인 끝: 보내지 않음")
         }
         if (accident.checking && !wasChecking) tickCountdown()
+        if (!accident.checking) {
+            // 확인이 끝나면 카운트다운 예약을 취소한다(곧바로 새 확인이 시작돼도 루프가 겹치지 않게).
+            countdown?.cancel()
+            countdown = null
+        }
         wasChecking = accident.checking
         refresh()
     }
 
     /** 작업 21: 확인 중에는 남은 초를 보여 주려고 0.5초마다 화면을 갱신한다. */
     private fun tickCountdown() {
+        countdown?.cancel()
         if (!accident.checking) return
         refresh()
-        scheduler.schedule(500) { tickCountdown() }
+        countdown = scheduler.schedule(500) { tickCountdown() }
     }
 }
