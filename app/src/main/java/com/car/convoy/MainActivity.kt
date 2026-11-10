@@ -7,11 +7,16 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.mutableStateOf
+import com.car.convoy.data.AccidentController
 import com.car.convoy.data.GroupController
 import com.car.convoy.data.MainThreadScheduler
 import com.car.convoy.data.navi.NaviHelperAdapter
-import com.car.convoy.data.vehicle.VehicleGearSource
+import com.car.convoy.data.vehicle.VehicleSource
 import com.car.convoy.domain.Destination
+import com.car.convoy.domain.FamilyState
+import com.car.convoy.domain.TelltaleReading
+import com.car.convoy.domain.TelltaleState
+import com.car.convoy.domain.TelltaleType
 import com.car.convoy.ui.GroupScreen
 import com.car.convoy.ui.GroupScreenModel
 import com.car.convoy.ui.PRESET_DESTINATIONS
@@ -29,6 +34,10 @@ private val NAMES = mapOf(ME to "나", "m1" to "일행 1", "m2" to "일행 2")
  *   adb shell am start -n com.car.convoy/.MainActivity --es demo depart:m1
  *   adb shell am start -n com.car.convoy/.MainActivity --es demo arrive:m1
  *   adb shell am start -n com.car.convoy/.MainActivity --es demo retry
+ * 작업 20 사고 의심(R8): 경고등은 Virtual Console에서 켜는 것이 기본이고, 콘솔을 쓸 수 없을 때 시연 명령으로 넣는다.
+ *   adb shell am start -n com.car.convoy/.MainActivity --es demo airbag:on   (airbag:off)
+ *   adb shell am start -n com.car.convoy/.MainActivity --es demo ok          ([괜찮아요])
+ *   adb shell am start -n com.car.convoy/.MainActivity --es demo airbaglater (8초 뒤 켜기, R8-11 확인용)
  */
 class MainActivity : ComponentActivity() {
 
@@ -36,8 +45,10 @@ class MainActivity : ComponentActivity() {
     private val model = mutableStateOf<GroupScreenModel?>(null)
 
     private lateinit var navi: NaviHelperAdapter
-    private lateinit var gear: VehicleGearSource
+    private lateinit var vehicle: VehicleSource
     private lateinit var controller: GroupController
+    private lateinit var accident: AccidentController
+    private var wasChecking = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -48,6 +59,7 @@ class MainActivity : ComponentActivity() {
             destinationArrived = { n, a -> scheduler.post { controller.onDestinationArrived(n, a) } },
             // requestRoute 예외는 호출 중 동기로 오므로 큐에 넣지 않고 바로 알린다(R11-19). 화면 갱신만 나중에 한다.
             routeFailed = { controller.onMyRouteFailed(); scheduler.post { refresh() } },
+            locationReceived = { loc -> scheduler.post { accident.onLocation(loc) } },
             log = ::log,
         )
         controller = GroupController(ME, MEMBERS, navi, scheduler) { u ->
@@ -55,9 +67,12 @@ class MainActivity : ComponentActivity() {
                 "효과=${u.result.memberEffect} 그룹=${u.result.groupEffect}")
             refresh()
         }
-        gear = VehicleGearSource(
+        // R8-9: 시연에서는 가족 1명이 이미 등록된 상태로 시작한다(시연 설정).
+        accident = AccidentController(controller.server, navi, scheduler, FamilyState.ACTIVE, ::onAccidentChange)
+        vehicle = VehicleSource(
             applicationContext,
             onGear = { g -> scheduler.post { controller.onGearChanged(g); refresh() } },
+            onTelltales = { r -> scheduler.post { accident.onTelltales(r) } },
             log = ::log,
         )
 
@@ -76,7 +91,7 @@ class MainActivity : ComponentActivity() {
         }
 
         refresh()
-        runCatching { gear.start() }.onFailure { log("Vehicle 시작 실패: $it") }
+        runCatching { vehicle.start() }.onFailure { log("Vehicle 시작 실패: $it") }
         // 초기화 성공 콜백의 스레드는 보장되지 않으므로 메인 스레드로 옮긴다(GroupController는 한 스레드에서만 부른다).
         navi.start { scheduler.post { handleDemo(intent) } }
     }
@@ -88,7 +103,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
-        gear.stop()
+        vehicle.stop()
         navi.stop()
         super.onDestroy()
     }
@@ -110,6 +125,14 @@ class MainActivity : ComponentActivity() {
                 "depart" -> controller.server.depart(arg!!)
                 "arrive" -> controller.server.arrive(arg!!)
                 "retry" -> controller.retryMyRoute()
+                "airbag" -> accident.onTelltales(
+                    listOf(TelltaleReading(TelltaleType.AIRBAG, if (arg == "on") TelltaleState.ON else TelltaleState.OFF)),
+                )
+                "ok" -> accident.respondOk()
+                // R8-11 확인용: 8초 뒤 경고등을 넣는다(그사이 내비를 앞으로 띄워 둔다).
+                "airbaglater" -> scheduler.schedule(8_000) {
+                    accident.onTelltales(listOf(TelltaleReading(TelltaleType.AIRBAG, TelltaleState.ON)))
+                }
                 else -> log("모르는 명령: $demo")
             }
         }.onFailure { log("명령 실패: $it") }
@@ -130,5 +153,23 @@ class MainActivity : ComponentActivity() {
 
     private fun log(message: String) {
         Log.i(TAG, message)
+    }
+
+    /** 작업 20: 사고 확인 상태가 바뀔 때. R8-11: 확인이 시작되면 Convoy 화면을 앞으로 가져온다. */
+    private fun onAccidentChange() {
+        if (accident.checking && !wasChecking) {
+            log("사고 의심: 괜찮으세요? (${accident.remainingSeconds}초)")
+            runCatching {
+                startActivity(
+                    Intent(this, MainActivity::class.java)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT),
+                )
+            }.onFailure { log("화면 앞으로 가져오기 실패: $it") }
+        }
+        if (!accident.checking && wasChecking) {
+            log(accident.lastSentReport?.let { "가족에게 보냄: ${it.telltales} 위치=${it.location ?: "위치 확인 불가"}" } ?: "확인 끝: 보내지 않음")
+        }
+        wasChecking = accident.checking
+        refresh()
     }
 }

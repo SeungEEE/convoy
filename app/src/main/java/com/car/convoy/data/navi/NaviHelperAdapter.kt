@@ -1,5 +1,6 @@
 package com.car.convoy.data.navi
 
+import ai.pleos.playground.navi.data.CurrentLocationInfo
 import ai.pleos.playground.navi.data.DestinationArrivedInfo
 import ai.pleos.playground.navi.data.RouteInfo
 import ai.pleos.playground.navi.data.RouteStartInfo
@@ -7,6 +8,8 @@ import ai.pleos.playground.navi.helper.NaviHelper
 import ai.pleos.playground.navi.helper.listener.NaviHelperEventListener
 import android.content.Context
 import com.car.convoy.domain.Destination
+import com.car.convoy.domain.ReportLocation
+import com.car.convoy.domain.port.LocationPort
 import com.car.convoy.domain.port.NaviPort
 
 /**
@@ -19,8 +22,9 @@ class NaviHelperAdapter(
     private val routeStarted: (name: String?) -> Unit,
     private val destinationArrived: (name: String?, address: String?) -> Unit,
     private val routeFailed: () -> Unit,
+    private val locationReceived: (ReportLocation) -> Unit,
     private val log: (String) -> Unit,
-) : NaviPort {
+) : NaviPort, LocationPort {
 
     private val navi = NaviHelper(context)
 
@@ -39,6 +43,12 @@ class NaviHelperAdapter(
         }
 
         override fun onRouteCancelled() = log("SDK onRouteCancelled")
+
+        override fun onCurrentLocationInfo(currentLocationInfo: CurrentLocationInfo) {
+            val info = currentLocationInfo
+            log("SDK 위치 ${info.latitude}, ${info.longitude} ${info.address}")
+            locationReceived(ReportLocation(info.latitude, info.longitude, info.address))
+        }
     }
 
     fun start(onReady: () -> Unit) {
@@ -69,5 +79,10 @@ class NaviHelperAdapter(
                 poiSubId = "0",
             )
         ) }.onFailure { log("requestRoute 실패: $it"); routeFailed() }
+    }
+
+    /** SPEC R8-8: 내 위치를 요청한다. 결과는 onCurrentLocationInfo로 온다(폴링). */
+    override fun requestLocation() {
+        runCatching { navi.getCurrentLocationInfo() }.onFailure { log("위치 요청 실패: $it") }
     }
 }

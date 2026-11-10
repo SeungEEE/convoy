@@ -6,6 +6,9 @@
     <uses-permission android:name="pleos.car.permission.NAVI_ROUTE" />
     <uses-permission android:name="pleos.car.permission.NAVI_ROUTE_SEARCH" />
     <uses-permission android:name="pleos.car.permission.CAR_DRIVE" />
+    <!-- 작업 20: 경고등 구독(R8). PRIVATE_CAR_SAFETY는 실제 차량에서 승인이 필요할 수 있다 -->
+    <uses-permission android:name="pleos.car.permission.CAR_SAFETY" />
+    <uses-permission android:name="pleos.car.permission.PRIVATE_CAR_SAFETY" />
 
     <application
         android:allowBackup="true"
@@ -20,6 +23,8 @@
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTop">
+            <!-- 주행 중에도 화면을 보여 준다(R8 사고 확인 응답, R10). 없으면 D에서 "주행 중에는 사용할 수 없습니다"로 가려진다. 실차는 심사가 필요할 수 있다 -->
+            <meta-data android:name="distractionOptimized" android:value="true" />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

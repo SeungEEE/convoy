@@ -7,5 +7,8 @@ fun interface Cancellable {
 
 /** 일정 시간 뒤에 일을 실행한다. 앱은 메인 스레드 Handler로, 테스트는 가짜 시계로 구현한다. */
 interface Scheduler {
+    /** 지금 시각(ms). 카운트다운과 보고서 시각에 쓴다. */
+    fun nowMillis(): Long
+
     fun schedule(delayMillis: Long, action: () -> Unit): Cancellable
 }
