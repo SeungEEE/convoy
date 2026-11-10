@@ -6,21 +6,31 @@ import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.mutableStateOf
 import com.car.convoy.data.AccidentController
+import com.car.convoy.data.FriendController
 import com.car.convoy.data.GroupController
 import com.car.convoy.data.MainThreadScheduler
 import com.car.convoy.data.navi.NaviHelperAdapter
 import com.car.convoy.data.vehicle.VehicleSource
 import com.car.convoy.domain.Destination
 import com.car.convoy.domain.FamilyState
+import com.car.convoy.domain.FollowEvent
+import com.car.convoy.domain.Friend
 import com.car.convoy.domain.TelltaleReading
 import com.car.convoy.domain.TelltaleState
 import com.car.convoy.domain.TelltaleType
+import com.car.convoy.domain.UserStatus
 import com.car.convoy.ui.AccidentPrompt
 import com.car.convoy.ui.AccidentScreenModel
+import com.car.convoy.ui.AppTab
+import com.car.convoy.ui.AppTabBar
 import com.car.convoy.ui.FamilyChip
+import com.car.convoy.ui.FriendScreen
+import com.car.convoy.ui.FriendScreenModel
+import com.car.convoy.ui.friendScreenModel
 import com.car.convoy.ui.GroupScreen
 import com.car.convoy.ui.SentFamilyCard
 import com.car.convoy.ui.accidentScreenModel
@@ -33,6 +43,14 @@ private const val ME = "me"
 private val MEMBERS = listOf(ME, "m1", "m2")
 private val NAMES = mapOf(ME to "나", "m1" to "일행 1", "m2" to "일행 2")
 
+// 작업 22(R2-5): 외부 서버가 없어 앱에 미리 정해 둔 가상 친구. 서준(오프라인)은 목록에 나오지 않는다.
+private val FRIENDS = listOf(
+    Friend("f1", "민수", UserStatus.ACTIVE),
+    Friend("f2", "지영", UserStatus.BUSY),
+    Friend("f3", "현우", UserStatus.ACTIVE),
+    Friend("f4", "서준", UserStatus.OFFLINE),
+)
+
 /**
  * 작업 15 그룹 주행 화면(R11-20). 나는 리더이고 실제 SDK를 쓰며, 일행 1·2는 가상 멤버다(R11-18).
  * adb 시연 명령도 그대로 받는다(녹화·자동 확인용).
@@ -44,12 +62,18 @@ private val NAMES = mapOf(ME to "나", "m1" to "일행 1", "m2" to "일행 2")
  *   adb shell am start -n com.car.convoy/.MainActivity --es demo airbag:on   (airbag:off)
  *   adb shell am start -n com.car.convoy/.MainActivity --es demo ok          ([괜찮아요])
  *   adb shell am start -n com.car.convoy/.MainActivity --es demo airbaglater (8초 뒤 켜기, R8-11 확인용)
+ * 작업 22 친구 목록(R2-5):
+ *   --es demo tab:friends (tab:group)   --es demo follow:f1   --es demo accept (decline)   --es demo cancel
+ *   --es demo status:busy (active, offline)
  */
 class MainActivity : ComponentActivity() {
 
     private val scheduler = MainThreadScheduler()
     private val model = mutableStateOf<GroupScreenModel?>(null)
     private val accidentModel = mutableStateOf<AccidentScreenModel?>(null)
+    private val friendModel = mutableStateOf<FriendScreenModel?>(null)
+    private val tab = mutableStateOf(AppTab.GROUP)
+    private val friends = FriendController(FRIENDS)
 
     private lateinit var navi: NaviHelperAdapter
     private lateinit var vehicle: VehicleSource
@@ -88,18 +112,34 @@ class MainActivity : ComponentActivity() {
             MaterialTheme {
                 val accidentUi = accidentModel.value
                 Box {
-                    model.value?.let {
-                        GroupScreen(
-                            model = it,
-                            onChooseDestination = ::chooseDestination,
-                            onRetry = { controller.retryMyRoute(); refresh() },
-                            onDemoDepart = { id -> controller.server.depart(id); refresh() },
-                            onDemoArrive = { id -> controller.server.arrive(id); refresh() },
-                            headerExtra = { accidentUi?.let { a -> FamilyChip(a.familyLabel) } },
-                            belowMembers = { accidentUi?.sentCard?.let { c -> SentFamilyCard(c) } },
-                        )
+                    Column {
+                        AppTabBar(tab.value) { tab.value = it }
+                        when (tab.value) {
+                            AppTab.GROUP -> model.value?.let {
+                                GroupScreen(
+                                    model = it,
+                                    onChooseDestination = ::chooseDestination,
+                                    onRetry = { controller.retryMyRoute(); refresh() },
+                                    onDemoDepart = { id -> controller.server.depart(id); refresh() },
+                                    onDemoArrive = { id -> controller.server.arrive(id); refresh() },
+                                    headerExtra = { accidentUi?.let { a -> FamilyChip(a.familyLabel) } },
+                                    belowMembers = { accidentUi?.sentCard?.let { c -> SentFamilyCard(c) } },
+                                )
+                            }
+                            AppTab.FRIENDS -> friendModel.value?.let {
+                                FriendScreen(
+                                    model = it,
+                                    onMyStatus = { s -> friends.setMyStatus(s); refresh() },
+                                    onRequestFollow = ::requestFollow,
+                                    onCancelFollow = { friends.cancelFollow(); refresh() },
+                                    onDemoAccept = { friends.respond(FollowEvent.ACCEPT); refresh() },
+                                    onDemoDecline = { friends.respond(FollowEvent.DECLINE); refresh() },
+                                    headerExtra = { accidentUi?.let { a -> FamilyChip(a.familyLabel) } },
+                                )
+                            }
+                        }
                     }
-                    // 작업 21: 사고 확인 중이면 그룹 화면 위에 "괜찮으세요?"를 덮는다.
+                    // 작업 21: 사고 확인 중이면 어느 탭 위에도 "괜찮으세요?"를 덮는다(R2-5).
                     if (accidentUi?.showPrompt == true) AccidentPrompt(accidentUi) { accident.respondOk() }
                 }
             }
@@ -129,6 +169,12 @@ class MainActivity : ComponentActivity() {
         refresh()
     }
 
+    private fun requestFollow(friendId: String) {
+        val sent = friends.requestFollow(friendId, controller.currentGear)
+        log("따라가기 요청 $friendId ${if (sent) "보냄" else "조건 안 맞아 무시"}")
+        refresh()
+    }
+
     private fun handleDemo(intent: Intent?) {
         val demo = intent?.getStringExtra("demo") ?: return
         intent.removeExtra("demo")
@@ -148,6 +194,12 @@ class MainActivity : ComponentActivity() {
                 "airbaglater" -> scheduler.schedule(8_000) {
                     accident.onTelltales(listOf(TelltaleReading(TelltaleType.AIRBAG, TelltaleState.ON)))
                 }
+                "tab" -> tab.value = if (arg == "friends") AppTab.FRIENDS else AppTab.GROUP
+                "follow" -> requestFollow(arg!!)
+                "accept" -> friends.respond(FollowEvent.ACCEPT)
+                "decline" -> friends.respond(FollowEvent.DECLINE)
+                "cancel" -> friends.cancelFollow()
+                "status" -> friends.setMyStatus(UserStatus.valueOf(arg!!.uppercase()))
                 else -> log("모르는 명령: $demo")
             }
         }.onFailure { log("명령 실패: $it") }
@@ -164,6 +216,7 @@ class MainActivity : ComponentActivity() {
             gear = controller.currentGear,
             canRetryMyRoute = controller.canRetryMyRoute,
         )
+        friendModel.value = friendScreenModel(FRIENDS, friends.myStatus, friends.follow, controller.currentGear)
         accidentModel.value = accidentScreenModel(
             checking = accident.checking,
             remainingSeconds = accident.remainingSeconds,
