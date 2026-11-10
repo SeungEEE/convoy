@@ -2,6 +2,7 @@ package com.car.convoy.data.server
 
 import com.car.convoy.data.Cancellable
 import com.car.convoy.data.Scheduler
+import com.car.convoy.domain.AccidentReport
 import com.car.convoy.domain.Destination
 import com.car.convoy.domain.GroupEvent
 import com.car.convoy.domain.port.ConvoyServer
@@ -22,6 +23,13 @@ class FakeConvoyServer(
 ) : ConvoyServer {
 
     private val pendingRouteStarts = mutableMapOf<String, Cancellable>()
+
+    /** SPEC R8-10: 가족에게 보낸 알림. 받는 차가 없어 여기에 모아 화면에 보여 준다. */
+    val familyAlerts = mutableListOf<AccidentReport>()
+
+    override fun notifyFamily(report: AccidentReport) {
+        familyAlerts += report
+    }
 
     override fun sendDestination(memberId: String, destination: Destination) {
         if (memberId == myId) {

@@ -36,7 +36,7 @@ class AccidentController(
     var checking = false
         private set
 
-    /** 가장 최근에 실제로 가족에게 보낸 알림(R8-10). 보내지 않았으면 null. */
+    /** 가장 최근 확인에서 실제로 가족에게 보낸 알림(R8-10). 보내지 않았거나 새 확인 중이면 null. */
     var lastSentReport: AccidentReport? = null
         private set
 
@@ -84,6 +84,8 @@ class AccidentController(
         startedAt = scheduler.nowMillis()
         telltales = types
         latestLocation = null
+        // R8-10: 카드는 이번 확인에서 실제로 보낸 경우에만 보여 준다. 이전 확인의 보고서는 지운다.
+        lastSentReport = null
         requestLocationRepeatedly()
         timeout = scheduler.schedule(CONFIRM_TIMEOUT_MILLIS) { onTimeout() }
         onChange()
