@@ -33,14 +33,15 @@
 | 600 | false |
 | 601 | true |
 
-### R2. 내 상태와 친구 지도
+### R2. 내 상태와 친구 목록
 - R2-1. 상태는 `ACTIVE`(활동 중), `BUSY`(업무 중), `OFFLINE`이다.
-- R2-2. 친구 지도에는 `ACTIVE`와 `BUSY` 친구만 표시한다. `OFFLINE`이면, 시스템은 지도에 표시하지 않고 앱을 쓰지 않는 상태와 구분되지 않게 한다.
-- R2-3. 상대가 `BUSY`이면, 시스템은 따라가기 요청을 거절한다(`BUSY`). `OFFLINE`은 지도에 없으므로 요청할 수 없다.
+- R2-2. 친구 목록에는 `ACTIVE`와 `BUSY` 친구만 표시한다. `OFFLINE`이면, 시스템은 목록에 표시하지 않고 앱을 쓰지 않는 상태와 구분되지 않게 한다.
+- R2-3. 상대가 `BUSY`이면, 시스템은 따라가기 요청을 거절한다(`BUSY`). `OFFLINE`은 목록에 없으므로 요청할 수 없다.
+- R2-4. 지도에 다른 차를 그리는 SDK API를 찾지 못해 지도 대신 목록으로 보여 준다(`docs/sdk-findings.md`). 지도 표시 수단이 확인되면 다시 정한다. (제안)
 
-`visibleOnMap(status)`, `canRequestFollow(targetStatus)`
+`visibleInFriendList(status)`, `canRequestFollow(targetStatus)`
 
-| 상대 상태 | visibleOnMap | canRequestFollow |
+| 상대 상태 | visibleInFriendList | canRequestFollow |
 |---|---|---|
 | `ACTIVE` | true | `OK` |
 | `BUSY` | true | `REJECT_BUSY` |
@@ -202,6 +203,7 @@
 | 초대 수락 | true | true |
 | 따라가기 수락·끊기 | true | true |
 | 사고 확인 응답 | true | true |
+| 그룹 목적지 변경 | true | false |
 
 (`NEUTRAL`, `REVERSE`는 `DRIVE`와 같게 취급한다. `UNKNOWN`은 안전을 위해 `DRIVE`와 같게 취급한다.) (제안)
 
@@ -258,6 +260,14 @@ R5~R7의 규칙을 이어 붙인 흐름이다. 새 규칙은 최소로 하고, �
 - R11-17. 어댑터는 `onRouteStarted`의 `RouteStartInfo.name`이 마지막으로 요청한 목적지의 `name`과 같을 때만 `ROUTE_STARTED`를 만든다. `name`에 무엇이 오는지는 작업 14에서 에뮬레이터로 확인하고, 목적지 이름이 아니면 이 규칙을 지우고 R11-3 범위로 돌린다. 이름 비교는 공백과 대소문자를 바꾸지 않는 정확한 문자열 일치다. R11-4의 도착 이벤트 비교도 같다. R11-4와 마찬가지로 같은 이름의 다른 목적지로 다시 요청한 경우는 구분하지 못한다. (제안)
 - R11-18. `FakeConvoyServer`의 가상 멤버는 목적지를 받으면 6초 뒤 `ROUTE_STARTED`를 만든다(실측 5.3~6.7초). 가상 멤버의 출발(`GEAR_DEPARTED`)과 도착(`NAVI_ARRIVED`)은 시연자가 정한 때에 만든다(작업 14에서는 adb 명령, 작업 15 뒤에는 시연용 버튼). 이것은 R11-8의 데모용 대체 이벤트다. 가상 멤버가 `REROUTING` 중에 새 목적지를 받으면, 이전에 예약한 `ROUTE_STARTED`를 취소하고 새 요청 기준으로 다시 6초를 센다. (제안)
 - R11-19. 내 차의 `requestRoute`가 실패하면(SDK 예외) 실패를 화면에 알린다. 이미 진행된 그룹 목적지 변경과 다른 멤버로의 전파는 되돌리지 않는다(다른 멤버의 경로는 각 차가 따로 요청하므로 내 차의 실패와 무관하다). 리더는 실패 표시가 있고 그룹이 `ACTIVE`일 때만 [다시 요청]으로 현재 그룹 목적지를 내 내비에만 다시 요청할 수 있다. 이 재요청은 `shouldSyncDestination`을 거치지 않는다(같은 목적지라 `IGNORE_SAME`이 되므로). 재요청도 실패하면 다시 실패를 알린다. (제안)
+- R11-20. 그룹 주행 화면(작업 15)은 다음을 보여 준다. (제안)
+  - 그룹 상태와 목적지. 그룹이 `FINISHED`면 "모두 도착했어요"를 크게 보여 준다.
+  - 멤버 목록. 상태는 `IDLE` "출발 전", `REROUTING` "경로 찾는 중", `DRIVING` "주행 중", `ARRIVED` "도착"으로 표시한다.
+  - 목적지 고르기: 검색 없이 미리 정한 목적지 목록에서 고른다(서울역, 강남역 등). 리더이고 `canPerform(SET_GROUP_DESTINATION, 기어)`가 true일 때만 누를 수 있다. `SET_GROUP_DESTINATION`은 R10 표의 "그룹 목적지 변경" 동작을 가리킨다.
+  - [다시 요청] 버튼: `canRetryMyRoute`일 때만 보인다(R11-19).
+  - 시연용 패널: 가상 멤버마다 [출발], [도착] 버튼(R11-18). "시연용"이라고 표시하고 다른 영역과 구분한다.
+  - 글자와 버튼은 차량 화면 기준으로 크게 한다(버튼 높이 80dp 이상, 본문 28sp 이상, `docs/sdk-findings.md`).
+  - 목적지를 바꾸면 내비 앱이 앞으로 오는 것은 막지 않는다(`docs/sdk-findings.md`). Convoy 화면은 정차 중 설정과 일행 상태 확인용이다.
 
 `distanceMeters(a, b)`: 두 `Destination` 좌표 사이의 하버사인 거리(m). 허용 오차는 ±0.01m다. (제안)
 
@@ -315,7 +325,7 @@ com.car.convoy
 - [x] 작업 0. Compose가 Pleos 에뮬레이터에서 뜨는지 확인한다 (안 되면 XML로 전환하고 알린다)
 - [ ] 작업 1. `validateInviteCode` (R1, 7행)
 - [ ] 작업 2. `isInviteCodeExpired` (R1, 4행)
-- [ ] 작업 3. `visibleOnMap`, `canRequestFollow` (R2, 3행)
+- [ ] 작업 3. `visibleInFriendList`, `canRequestFollow` (R2, 3행)
 - [ ] 작업 4. `nextFollowState` (R3, 6행)
 - [ ] 작업 5. `canInvite`, `canAcceptInvite` (R4, 7행)
 - [x] 작업 6. `shouldSyncDestination` (R5, 5행)
@@ -325,14 +335,16 @@ com.car.convoy
 - [x] 작업 10. `isAccidentSuspected` (R8, 6행)
 - [x] 작업 11. `accidentAction` (R8, 7행)
 - [x] 작업 12. `nextFamilyState` (R9, 5행)
-- [x] 작업 13. `canPerform` (R10, 14행)
+- [x] 작업 13. `canPerform` (R10, 14행. 그룹 목적지 변경 2행은 작업 15에서 추가)
 - [x] 작업 14. 그룹 주행 어댑터: `NaviPort`(NaviHelper), `VehiclePort`(기어), `FakeConvoyServer` 가상 멤버, `GroupSession` 연결 (R11-16~18, 에뮬레이터에서 수동 확인: 경로 요청·경로 시작·가상 멤버 확인, 내 차 기어 출발과 내 차 도착은 미확인. `docs/sdk-findings.md`)
-- [ ] 작업 15. `ui/` 화면 (친구 지도, 그룹, 사고 확인, 가족 알림)
+- [ ] 작업 15. 그룹 주행 화면 (R10 그룹 목적지 변경, R11-20, 에뮬레이터에서 수동 확인)
 - [ ] 작업 16. 시나리오 시연: 목적지 변경 → 일행 재탐색 → 도착 공유, 사고 의심 → 확인 → 가족 알림
 - [x] 작업 17. `nextMemberState` (R11, 11행). (선행: 작업 14 전에 한다)
 - [x] 작업 18. 그룹 목적지 전파: 포트(`NaviPort`, `ConvoyServer`)의 가짜 구현으로, 리더가 목적지를 바꾸면 멤버 N명 모두에게 `requestRoute`가 호출되고 `NOT_LEADER`·`IGNORE_SAME`이면 호출되지 않음을 테스트한다 (R5, R11-1). (선행: 작업 14 전에 한다)
 - [x] 작업 19. 그룹 종료: 전원 `ARRIVED`면 `FINISH_GROUP`이 나오고, 종료 뒤 목적지 변경은 무시됨을 테스트한다 (R7-4, R11-5, R11-9). (선행: 작업 14 전에 한다)
 - [ ] 작업 20. 사고 의심 어댑터: 경고등 구독, 30초 타이머(`Clock`), 시간 초과 시 위치(`NaviPort` 현재 위치)와 경고등 정보를 서버 포트로 가족에게 보내는 연결 (R8, 에뮬레이터에서 수동 확인)
+- [ ] 작업 21. 사고 확인·가족 알림 화면 (R8, 작업 20 뒤)
+- [ ] 작업 22. 친구 목록 화면 (R2, 지도 대신 목록. 지도에 다른 차를 그리는 SDK API가 없음). (선행: 작업 3)
 
 ## 4장. P1 (2차 PT 전, 이번 명세에 포함하지 않음)
 방향지시등 공유, 근접·이탈 알림, 휴게·충전 조율(배터리 `getEvBatteryStateOfCharge`), 주행 상태 공유, 친구별 숨기기. P0 테스트가 모두 초록이 된 뒤 같은 방식으로 명세를 추가한다.
