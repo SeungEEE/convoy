@@ -9,6 +9,9 @@ enum class DriverAction {
     ACCEPT_INVITE,
     ACCEPT_OR_END_FOLLOW,
     RESPOND_ACCIDENT_CHECK,
+
+    /** R10 표의 "그룹 목적지 변경"(R11-20). 설정이라 정차 중에만 한다. */
+    SET_GROUP_DESTINATION,
 }
 
 /**
