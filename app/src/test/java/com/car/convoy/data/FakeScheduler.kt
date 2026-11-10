@@ -7,6 +7,8 @@ class FakeScheduler : Scheduler {
     private var now = 0L
     private val tasks = mutableListOf<Task>()
 
+    override fun nowMillis(): Long = now
+
     override fun schedule(delayMillis: Long, action: () -> Unit): Cancellable {
         val task = Task(now + delayMillis, action)
         tasks += task
