@@ -97,3 +97,14 @@
 | 안내 중 `requestRoute` 뒤 화면 | **안내가 진행 중인 상태에서 새 `requestRoute`를 보내면 1초 안에 내비 앱(`ai.umos.maps.android.navigation.app`)이 전면이 됐다**(2회, `dumpsys activity`의 `topResumedActivity`로 확인). 위 "그룹 주행 검증"의 "가져가지 않았다"는 안내가 없던 상태의 첫 요청이었다. 어느 조건이 차이를 만드는지는 더 확인해야 한다 |
 | 기어 구독 | 앱 시작 시 `GEAR_PARK`가 왔다. `registerGearSelection`은 deprecated 경고("use the Google GEAR_SELECTION property")가 나지만 동작한다 |
 | Virtual Console 기어 HTTP | 콘솔 페이지가 `PUT /vehicle/gear?gear=Drive`를 쓴다. adb forward 뒤 직접 호출하면 503이고 `/vehicle/state`의 `gear.bridge_ready`가 1분 넘게 `false`였다. 그래서 P→D 출발은 에뮬레이터에서 확인하지 못했고 단위 테스트로만 확인했다 |
+
+## 작업 15 그룹 주행 화면 녹화 중 관찰 (2026-11-10, `feat/group-screen`, Pleos Emulator 2.1.0)
+그룹 주행 화면을 에뮬레이터에서 녹화하면서(`adb shell screenrecord`, `input tap`, 시연 명령) 본 것이다.
+
+| 관찰 | 내용 |
+|---|---|
+| `requestRoute` 뒤 내비 화면 | 내비 앱이 앞으로 와서 **경로 후보 3개(추천 등)와 "안내 시작" 5초 카운트다운**을 보여 준 뒤 자동으로 안내를 시작했다. 요청부터 `onRouteStarted`까지 걸리던 수 초(5.3~6.7초)는 이 카운트다운 때문으로 보인다(추론) |
+| 첫 요청에도 내비가 전면 | 에뮬레이터를 새로 켠 뒤 안내가 없던 상태의 첫 `requestRoute`에서도 내비 앱이 앞으로 왔다(1회). 위 "그룹 주행 검증"의 "가져가지 않았다"와 다르다. 조건 차이는 아직 모른다 |
+| 부팅 직후 첫 경로 | 부팅 직후 첫 요청은 `onRouteStarted`까지 약 13.6초 걸렸다(1회). 그 뒤 요청은 6~11초 |
+| 하단 앱 아이콘으로 복귀 | 내비가 앞에 있을 때 하단의 Convoy(안드로이드) 아이콘을 누르면 Convoy 화면으로 돌아왔다. 다만 내비가 경로 후보를 보여 주는 중에는 바로 돌아오지 않은 적이 있다(1회) |
+| 탭 누락 | 녹화 시작 직후의 `input tap` 한 번이 앱에 전달되지 않았다(1회). 시연 녹화에서는 목적지 선택을 시연 명령(`dest:서울역`)으로 보냈다 |

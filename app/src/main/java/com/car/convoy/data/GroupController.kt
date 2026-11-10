@@ -32,6 +32,10 @@ class GroupController(
 
     private var lastGear = Gear.UNKNOWN
 
+    /** 화면이 R10 판단(canPerform)에 쓰는 현재 기어. 처음에는 UNKNOWN이라 주행 중과 같게 취급된다. */
+    val currentGear: Gear
+        get() = lastGear
+
     /** SPEC R11-19: 내 차의 경로 요청이 실패했는가. 화면이 알리고 [retryMyRoute]를 제공한다. */
     var myRouteFailed = false
         private set
