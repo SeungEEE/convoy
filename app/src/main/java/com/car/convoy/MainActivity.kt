@@ -20,7 +20,7 @@ import com.car.convoy.ui.groupScreenModel
 private const val TAG = "Convoy"
 private const val ME = "me"
 private val MEMBERS = listOf(ME, "m1", "m2")
-private val NAMES = mapOf(ME to "나 (리더)", "m1" to "일행 1", "m2" to "일행 2")
+private val NAMES = mapOf(ME to "나", "m1" to "일행 1", "m2" to "일행 2")
 
 /**
  * 작업 15 그룹 주행 화면(R11-20). 나는 리더이고 실제 SDK를 쓰며, 일행 1·2는 가상 멤버다(R11-18).

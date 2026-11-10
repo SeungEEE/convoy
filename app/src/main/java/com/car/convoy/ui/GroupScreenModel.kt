@@ -14,12 +14,15 @@ data class MemberRow(
     val state: GroupMemberState,
     val stateLabel: String,
     val isVirtual: Boolean,
+    val isLeader: Boolean = false,
 )
 
 /** SPEC R11-20: 그룹 주행 화면에 보일 값. Compose 화면은 이 값만 그린다. */
 data class GroupScreenModel(
     val groupStatusLabel: String,
     val destinationName: String?,
+    val destinationAddress: String?,
+    val arrivedSummary: String,
     val finished: Boolean,
     val members: List<MemberRow>,
     val canChooseDestination: Boolean,
@@ -53,10 +56,15 @@ fun groupScreenModel(
     return GroupScreenModel(
         groupStatusLabel = if (active) "그룹 주행 중" else "모두 도착했어요",
         destinationName = session.destination?.name,
+        destinationAddress = session.destination?.address,
+        arrivedSummary = "도착 ${memberIds.count { session.memberState(it) == GroupMemberState.ARRIVED }} / ${memberIds.size}",
         finished = session.status == GroupStatus.FINISHED,
         members = memberIds.map { id ->
             val state = session.memberState(id)
-            MemberRow(id, names[id] ?: id, state, memberStateLabel(state), isVirtual = id != myId)
+            MemberRow(
+                id, names[id] ?: id, state, memberStateLabel(state),
+                isVirtual = id != myId, isLeader = isLeader && id == myId,
+            )
         },
         canChooseDestination = isLeader && active && canPerform(DriverAction.SET_GROUP_DESTINATION, gear),
         showRetry = canRetryMyRoute,
