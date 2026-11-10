@@ -28,6 +28,8 @@ class AccidentController(
     private val scheduler: Scheduler,
     initialFamily: FamilyState,
     private val onChange: () -> Unit = {},
+    /** 보고서에 넣는 실제 시각(R8-10 카드). 30초 측정은 [scheduler]의 단조 시계로 한다. */
+    private val wallClock: () -> Long = System::currentTimeMillis,
 ) {
     var familyState: FamilyState = initialFamily
         private set
@@ -99,7 +101,7 @@ class AccidentController(
     private fun onTimeout() {
         // R8-3: 정확히 30초가 되면 판단한다. R8-5: 가족이 없으면 전송하지 않는다.
         if (accidentAction(elapsedSeconds(), responded = false, hasFamily = hasFamily()) == AccidentAction.NOTIFY_FAMILY) {
-            val report = AccidentReport(scheduler.nowMillis(), latestLocation, telltales)
+            val report = AccidentReport(wallClock(), latestLocation, telltales)
             server.notifyFamily(report)
             lastSentReport = report
         }

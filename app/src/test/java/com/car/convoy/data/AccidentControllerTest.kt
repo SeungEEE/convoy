@@ -32,7 +32,7 @@ class AccidentControllerTest {
     private val server = RecordingServer()
     private val location = CountingLocation()
     private val scheduler = FakeScheduler()
-    private val c = AccidentController(server, location, scheduler, FamilyState.ACTIVE)
+    private val c = AccidentController(server, location, scheduler, FamilyState.ACTIVE, wallClock = scheduler::nowMillis)
 
     private val airbagOn = listOf(TelltaleReading(TelltaleType.AIRBAG, TelltaleState.ON))
     private val allOff = listOf(TelltaleReading(TelltaleType.AIRBAG, TelltaleState.OFF))

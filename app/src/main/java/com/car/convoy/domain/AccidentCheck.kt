@@ -6,7 +6,7 @@ data class TelltaleReading(val type: TelltaleType, val state: TelltaleState)
 /** SPEC R8-8. 가족에게 보내는 위치. 없으면 보고서의 location이 null이다("위치 확인 불가"). */
 data class ReportLocation(val latitude: Double, val longitude: Double, val address: String?)
 
-/** SPEC R8-3, R8-10. 가족에게 보내는 사고 의심 알림: 시각, 위치, 경고등 종류. */
+/** SPEC R8-3, R8-10. 가족에게 보내는 사고 의심 알림: 실제 시각(epoch ms), 위치, 경고등 종류. */
 data class AccidentReport(val atMillis: Long, val location: ReportLocation?, val telltales: List<TelltaleType>)
 
 /** SPEC R8-1: 목록에 사고 의심 경고등이 하나라도 있는가. */
