@@ -52,6 +52,7 @@
 - R3-2. 상대가 거절하면 `ENDED`가 된다.
 - R3-3. 따라가는 쪽이든 따라오는 쪽이든 끊으면, 시스템은 `ENDED`로 바꾸고 따라가던 경로를 취소한다.
 - R3-4. 따라오는 동안 상대 화면에는 "따라오는 중" 표시와 [끊기] 버튼이 있다.
+- R3-5. 표에 없는 상태·이벤트 조합(예: `ENDED`에서 `CANCEL`, `ACTIVE`에서 `DECLINE`)이면, 시스템은 상태를 바꾸지 않는다.
 
 `nextFollowState(current, event)`
 
@@ -184,6 +185,7 @@
 - R9-1. 가족 등록은 운전자 본인이 차 화면에서 수락해야 한다. 거절하거나 응답이 없으면 등록되지 않는다.
 - R9-2. 운전자는 언제든 공유를 끌 수 있고, 끄면 이후 가족에게 아무것도 보내지 않는다.
 - R9-3. 가족이 받는 알림은 1차에서 수신 측 앱 화면의 알림 카드다(폰 앱은 P2).
+- R9-4. 표에 없는 상태·이벤트 조합(예: `NONE`에서 `ACCEPT`, `ACTIVE`에서 `REQUEST`)이면, 시스템은 상태를 바꾸지 않는다.
 
 `nextFamilyState(current, event)`
 
@@ -329,11 +331,11 @@ com.car.convoy
 작업 하나는 함수 하나다. 작업마다 테스트 먼저(사람), Red 확인, 구현(AI), Green 확인 순서다.
 
 - [x] 작업 0. Compose가 Pleos 에뮬레이터에서 뜨는지 확인한다 (안 되면 XML로 전환하고 알린다)
-- [ ] 작업 1. `validateInviteCode` (R1, 7행)
-- [ ] 작업 2. `isInviteCodeExpired` (R1, 4행)
-- [ ] 작업 3. `visibleInFriendList`, `canRequestFollow` (R2, 3행)
-- [ ] 작업 4. `nextFollowState` (R3, 6행)
-- [ ] 작업 5. `canInvite`, `canAcceptInvite` (R4, 7행)
+- [x] 작업 1. `validateInviteCode` (R1, 7행)
+- [x] 작업 2. `isInviteCodeExpired` (R1, 4행)
+- [x] 작업 3. `visibleInFriendList`, `canRequestFollow` (R2, 3행)
+- [x] 작업 4. `nextFollowState` (R3, 6행)
+- [x] 작업 5. `canInvite`, `canAcceptInvite` (R4, 7행)
 - [x] 작업 6. `shouldSyncDestination` (R5, 5행)
 - [x] 작업 7. `shouldReroute` (R6, 4행)
 - [x] 작업 8. `gearEvent` (R7, 8행)
