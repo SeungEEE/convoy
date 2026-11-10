@@ -44,7 +44,7 @@ class GroupScreenModelTest {
         s.setDestination("me", dest)
         assertEquals(
             listOf(
-                MemberRow("me", "나", GroupMemberState.REROUTING, "경로 찾는 중", isVirtual = false),
+                MemberRow("me", "나", GroupMemberState.REROUTING, "경로 찾는 중", isVirtual = false, isLeader = true),
                 MemberRow("m1", "일행 1", GroupMemberState.REROUTING, "경로 찾는 중", isVirtual = true),
                 MemberRow("m2", "일행 2", GroupMemberState.REROUTING, "경로 찾는 중", isVirtual = true),
             ),
