@@ -99,6 +99,12 @@ class AccidentController(
     }
 
     private fun onTimeout() {
+        // 예약 시계(Handler)와 측정 시계가 어긋나 일찍 울리면, 끝내지 않고 남은 시간만큼 다시 기다린다(R8-3).
+        val leftMillis = CONFIRM_TIMEOUT_MILLIS - (scheduler.nowMillis() - startedAt)
+        if (leftMillis > 0) {
+            timeout = scheduler.schedule(leftMillis) { onTimeout() }
+            return
+        }
         // R8-3: 정확히 30초가 되면 판단한다. R8-5: 가족이 없으면 전송하지 않는다.
         if (accidentAction(elapsedSeconds(), responded = false, hasFamily = hasFamily()) == AccidentAction.NOTIFY_FAMILY) {
             val report = AccidentReport(wallClock(), latestLocation, telltales)

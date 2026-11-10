@@ -5,6 +5,7 @@ import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.Box
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.mutableStateOf
 import com.car.convoy.data.AccidentController
@@ -17,7 +18,12 @@ import com.car.convoy.domain.FamilyState
 import com.car.convoy.domain.TelltaleReading
 import com.car.convoy.domain.TelltaleState
 import com.car.convoy.domain.TelltaleType
+import com.car.convoy.ui.AccidentPrompt
+import com.car.convoy.ui.AccidentScreenModel
+import com.car.convoy.ui.FamilyChip
 import com.car.convoy.ui.GroupScreen
+import com.car.convoy.ui.SentFamilyCard
+import com.car.convoy.ui.accidentScreenModel
 import com.car.convoy.ui.GroupScreenModel
 import com.car.convoy.ui.PRESET_DESTINATIONS
 import com.car.convoy.ui.groupScreenModel
@@ -43,12 +49,14 @@ class MainActivity : ComponentActivity() {
 
     private val scheduler = MainThreadScheduler()
     private val model = mutableStateOf<GroupScreenModel?>(null)
+    private val accidentModel = mutableStateOf<AccidentScreenModel?>(null)
 
     private lateinit var navi: NaviHelperAdapter
     private lateinit var vehicle: VehicleSource
     private lateinit var controller: GroupController
     private lateinit var accident: AccidentController
     private var wasChecking = false
+    private var countdown: com.car.convoy.data.Cancellable? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -78,14 +86,21 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             MaterialTheme {
-                model.value?.let {
-                    GroupScreen(
-                        model = it,
-                        onChooseDestination = ::chooseDestination,
-                        onRetry = { controller.retryMyRoute(); refresh() },
-                        onDemoDepart = { id -> controller.server.depart(id); refresh() },
-                        onDemoArrive = { id -> controller.server.arrive(id); refresh() },
-                    )
+                val accidentUi = accidentModel.value
+                Box {
+                    model.value?.let {
+                        GroupScreen(
+                            model = it,
+                            onChooseDestination = ::chooseDestination,
+                            onRetry = { controller.retryMyRoute(); refresh() },
+                            onDemoDepart = { id -> controller.server.depart(id); refresh() },
+                            onDemoArrive = { id -> controller.server.arrive(id); refresh() },
+                            headerExtra = { accidentUi?.let { a -> FamilyChip(a.familyLabel) } },
+                            belowMembers = { accidentUi?.sentCard?.let { c -> SentFamilyCard(c) } },
+                        )
+                    }
+                    // 작업 21: 사고 확인 중이면 그룹 화면 위에 "괜찮으세요?"를 덮는다.
+                    if (accidentUi?.showPrompt == true) AccidentPrompt(accidentUi) { accident.respondOk() }
                 }
             }
         }
@@ -149,6 +164,13 @@ class MainActivity : ComponentActivity() {
             gear = controller.currentGear,
             canRetryMyRoute = controller.canRetryMyRoute,
         )
+        accidentModel.value = accidentScreenModel(
+            checking = accident.checking,
+            remainingSeconds = accident.remainingSeconds,
+            family = accident.familyState,
+            lastSentReport = accident.lastSentReport,
+            zone = java.time.ZoneId.systemDefault(),
+        )
     }
 
     private fun log(message: String) {
@@ -169,7 +191,21 @@ class MainActivity : ComponentActivity() {
         if (!accident.checking && wasChecking) {
             log(accident.lastSentReport?.let { "가족에게 보냄: ${it.telltales} 위치=${it.location ?: "위치 확인 불가"}" } ?: "확인 끝: 보내지 않음")
         }
+        if (accident.checking && !wasChecking) tickCountdown()
+        if (!accident.checking) {
+            // 확인이 끝나면 카운트다운 예약을 취소한다(곧바로 새 확인이 시작돼도 루프가 겹치지 않게).
+            countdown?.cancel()
+            countdown = null
+        }
         wasChecking = accident.checking
         refresh()
+    }
+
+    /** 작업 21: 확인 중에는 남은 초를 보여 주려고 0.5초마다 화면을 갱신한다. */
+    private fun tickCountdown() {
+        countdown?.cancel()
+        if (!accident.checking) return
+        refresh()
+        countdown = scheduler.schedule(500) { tickCountdown() }
     }
 }

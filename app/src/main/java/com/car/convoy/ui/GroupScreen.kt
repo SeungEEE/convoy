@@ -65,17 +65,20 @@ fun GroupScreen(
     onRetry: () -> Unit,
     onDemoDepart: (String) -> Unit,
     onDemoArrive: (String) -> Unit,
+    headerExtra: @Composable () -> Unit = {},
+    belowMembers: @Composable () -> Unit = {},
 ) {
     Column(
         modifier = Modifier.fillMaxSize().background(Page).padding(horizontal = 36.dp, vertical = 28.dp),
         verticalArrangement = Arrangement.spacedBy(24.dp),
     ) {
-        Header(model)
+        Header(model, headerExtra)
         Row(horizontalArrangement = Arrangement.spacedBy(28.dp)) {
             Column(Modifier.weight(1.2f), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 DestinationCard(model)
                 if (model.finished) FinishedBanner()
                 model.members.forEach { MemberCard(it) }
+                belowMembers()
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 DestinationPicker(model, onChooseDestination)
@@ -87,11 +90,12 @@ fun GroupScreen(
 }
 
 @Composable
-private fun Header(model: GroupScreenModel) {
+private fun Header(model: GroupScreenModel, extra: @Composable () -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(20.dp)) {
         Text("Convoy", fontSize = 40.sp, fontWeight = FontWeight.Bold, color = Accent)
         Chip(model.groupStatusLabel, if (model.finished) Done else Accent, BODY)
         Spacer(Modifier.weight(1f))
+        extra()
         Text(model.arrivedSummary, fontSize = 34.sp, fontWeight = FontWeight.Bold, color = Ink)
     }
 }
@@ -153,10 +157,10 @@ private fun DestinationPicker(model: GroupScreenModel, onChoose: (Destination) -
             Row(
                 modifier = Modifier.fillMaxWidth()
                     .heightIn(min = 96.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(if (selected) Accent else Color(0xFFE9EFF8))
-                    .border(2.dp, if (selected) Accent else Color(0xFFC5D3E8), RoundedCornerShape(12.dp))
                     .alpha(if (model.canChooseDestination) 1f else 0.45f)
+                    .background(if (selected) Accent else Color(0xFFE9EFF8), RoundedCornerShape(12.dp))
+                    .border(2.dp, if (selected) Accent else Color(0xFFC5D3E8), RoundedCornerShape(12.dp))
+                    .clip(RoundedCornerShape(12.dp))
                     .clickable(enabled = model.canChooseDestination) { onChoose(d) }
                     .padding(horizontal = 24.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -226,7 +230,7 @@ private fun DemoButton(label: String, onClick: () -> Unit) {
 }
 
 @Composable
-private fun Chip(label: String, color: Color, size: TextUnit) {
+internal fun Chip(label: String, color: Color, size: TextUnit) {
     Text(
         label,
         fontSize = size,

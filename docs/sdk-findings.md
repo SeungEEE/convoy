@@ -128,3 +128,10 @@
 | 경고등 SDK 경로 | 콘솔에서 Airbag을 On으로 바꾸자 `onTelltaleInfoUpdated`로 `[AIRBAG ON]`이 왔다. HTTP로 Off → On 하자 R8-6대로 새 확인이 시작됐고 30초 뒤 가족 전송까지 이어졌다 |
 | 기어 D | `PUT /vehicle/controls?brake=100&speed=0&accelerator=0`로 브레이크를 밟은 뒤 D를 보내야 앱에 `GEAR_DRIVE`가 왔다(브레이크 없이 보낸 1회는 오지 않았다). P→D에서 내 차가 `GEAR_DEPARTED`로 "주행 중"이 됐다 |
 | **주행 중 화면 제한** | 기어가 D이면 Pleos가 Convoy 화면 전체를 **"주행 중에는 사용할 수 없습니다."**로 가렸다. 액티비티에 `<meta-data android:name="distractionOptimized" android:value="true"/>`를 넣자 D에서도 화면이 보였고, 목적지 버튼은 R10대로 비활성("정차 중에 리더만 바꿀 수 있어요")이었다. 실제 차량에서 이 설정이 심사 없이 허용되는지는 모른다 |
+
+## 작업 21 사고 확인 화면 확인 (2026-11-10, `feat/accident-screen`, Pleos Emulator 2.1.0)
+| 확인 | 결과 |
+|---|---|
+| 30초 타이머가 일찍 울림 | 확인 시작 21.8초 만에 `Handler.postDelayed`의 30초 예약이 실행됐고, `elapsedRealtime`으로 잰 경과가 30초 미만이라 아무것도 보내지 않고 끝났다(1회). 예약 시계와 측정 시계가 어긋난 것으로 보인다(추론). 일찍 울리면 남은 시간만큼 다시 기다리도록 고친 뒤 30.0초에 전송됐다(3회) |
+| 앱 시작 때 이미 켜진 경고등 | 콘솔에서 Airbag이 On인 채 앱을 다시 시작하자 첫 목록에서 바로 "괜찮으세요?"가 떴다(1회, R8-6대로 "의심 아님 → 의심"). 같은 조건에서 뜨지 않은 적도 1회 있어, 시작 직후 첫 목록이 언제 오는지는 확인이 더 필요하다 |
+| 버튼 배경 렌더링 | `Modifier.clip()` 뒤에 `background()`를 둔 목적지 버튼이 이번 에뮬레이터 세션에서 배경·테두리 없이 그려졌다. 이전 세션에서는 같은 코드가 그려졌다. `background(color, shape)`로 모양을 직접 주자 그려졌다 |
