@@ -12,6 +12,9 @@ enum class DriverAction {
 
     /** R10 표의 "그룹 목적지 변경"(R11-20). 설정이라 정차 중에만 한다. */
     SET_GROUP_DESTINATION,
+
+    /** R10 표의 "따라가기 요청"(R2-5). 설정이라 정차 중에만 한다. */
+    REQUEST_FOLLOW,
 }
 
 /**

@@ -34,3 +34,18 @@ fun nextFollowState(current: FollowState, event: FollowEvent): FollowState =
         FollowState.ACTIVE to FollowEvent.CANCEL -> FollowState.ENDED
         else -> current
     }
+
+/** SPEC R2-5. 친구 한 명(시연에서는 앱에 미리 정해 둔 가상 친구). */
+data class Friend(val id: String, val name: String, val status: UserStatus)
+
+/** SPEC R2-5. 진행 중인 따라가기 하나(한 번에 한 친구). */
+data class FollowLink(val friendId: String, val state: FollowState)
+
+/**
+ * SPEC R2-5: [따라가기 요청]을 누를 수 있는가. 상대가 요청을 받을 수 있고(R2-3), 정차 중이며(R10 REQUEST_FOLLOW),
+ * 진행 중인(REQUESTED·ACTIVE) 따라가기가 없어야 한다. 내 상태는 조건이 아니다.
+ */
+fun canStartFollowRequest(targetStatus: UserStatus, gear: Gear, followInProgress: Boolean): Boolean =
+    !followInProgress &&
+        canRequestFollow(targetStatus) == FollowRequestResult.OK &&
+        canPerform(DriverAction.REQUEST_FOLLOW, gear)
