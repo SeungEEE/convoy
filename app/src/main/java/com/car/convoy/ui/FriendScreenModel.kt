@@ -67,6 +67,7 @@ fun friendScreenModel(
                 else -> null
             },
             canRequest = canRequest,
+            // 업무 중 안내는 R2-5대로 늘 보인다. 정차 중 안내는 다른 따라가기가 진행 중이면 이유가 아니므로 숨긴다.
             note = when {
                 mine != null || canRequest -> null
                 f.status == UserStatus.BUSY -> "업무 중이라 요청할 수 없어요"

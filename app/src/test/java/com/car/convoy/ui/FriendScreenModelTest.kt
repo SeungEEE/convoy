@@ -103,6 +103,15 @@ class FriendScreenModelTest {
         assertFalse(model(follow = FollowLink("f1", FollowState.ACTIVE)).row("f3").canRequest)
     }
 
+    // R2-5: 업무 중 안내는 조건 없이 보인다. 진행 중일 때 숨기는 것은 정차 중 안내뿐이다(Codex 리뷰).
+    @Test fun busy_note_stays_while_following_another() {
+        assertEquals("업무 중이라 요청할 수 없어요", model(follow = FollowLink("f1", FollowState.ACTIVE)).row("f2").note)
+    }
+
+    @Test fun driving_note_hidden_while_following_another() {
+        assertNull(model(follow = FollowLink("f1", FollowState.ACTIVE), gear = Gear.DRIVE).row("f3").note)
+    }
+
     @Test fun ended_link_frees_all_buttons() {
         val m = model(follow = FollowLink("f1", FollowState.ENDED))
         assertTrue(m.row("f1").canRequest)
