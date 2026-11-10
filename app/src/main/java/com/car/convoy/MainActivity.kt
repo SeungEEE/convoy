@@ -5,36 +5,27 @@ import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.car.convoy.data.GroupController
 import com.car.convoy.data.MainThreadScheduler
 import com.car.convoy.data.navi.NaviHelperAdapter
 import com.car.convoy.data.vehicle.VehicleGearSource
 import com.car.convoy.domain.Destination
+import com.car.convoy.ui.GroupScreen
+import com.car.convoy.ui.GroupScreenModel
+import com.car.convoy.ui.PRESET_DESTINATIONS
+import com.car.convoy.ui.groupScreenModel
 
 private const val TAG = "Convoy"
 private const val ME = "me"
 private val MEMBERS = listOf(ME, "m1", "m2")
-
-/** 시연·확인용 목적지. */
-private val DESTINATIONS = mapOf(
-    "seoul" to Destination("서울역", "서울 용산구 한강대로 405", 37.5547, 126.9707),
-    "gangnam" to Destination("강남역", "서울 강남구 강남대로 396", 37.4979, 127.0276),
-)
+private val NAMES = mapOf(ME to "나 (리더)", "m1" to "일행 1", "m2" to "일행 2")
 
 /**
- * 작업 14 확인용 화면. 그룹 상태를 보여 주고, adb로 시연 명령을 받는다(화면은 작업 15에서 만든다).
- *   adb shell am start -n com.car.convoy/.MainActivity --es demo dest:seoul
+ * 작업 15 그룹 주행 화면(R11-20). 나는 리더이고 실제 SDK를 쓰며, 일행 1·2는 가상 멤버다(R11-18).
+ * adb 시연 명령도 그대로 받는다(녹화·자동 확인용).
+ *   adb shell am start -n com.car.convoy/.MainActivity --es demo dest:서울역
  *   adb shell am start -n com.car.convoy/.MainActivity --es demo depart:m1
  *   adb shell am start -n com.car.convoy/.MainActivity --es demo arrive:m1
  *   adb shell am start -n com.car.convoy/.MainActivity --es demo retry
@@ -42,8 +33,7 @@ private val DESTINATIONS = mapOf(
 class MainActivity : ComponentActivity() {
 
     private val scheduler = MainThreadScheduler()
-    private val states = mutableStateOf("")
-    private val logs = mutableStateListOf<String>()
+    private val model = mutableStateOf<GroupScreenModel?>(null)
 
     private lateinit var navi: NaviHelperAdapter
     private lateinit var gear: VehicleGearSource
@@ -67,19 +57,20 @@ class MainActivity : ComponentActivity() {
         }
         gear = VehicleGearSource(
             applicationContext,
-            onGear = { g -> scheduler.post { controller.onGearChanged(g) } },
+            onGear = { g -> scheduler.post { controller.onGearChanged(g); refresh() } },
             log = ::log,
         )
 
         setContent {
             MaterialTheme {
-                Column(
-                    modifier = Modifier.fillMaxSize().padding(32.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                ) {
-                    Text("Convoy 작업 14 확인", fontSize = 36.sp)
-                    Text(states.value, fontSize = 28.sp)
-                    logs.takeLast(12).forEach { Text(it, fontSize = 20.sp) }
+                model.value?.let {
+                    GroupScreen(
+                        model = it,
+                        onChooseDestination = ::chooseDestination,
+                        onRetry = { controller.retryMyRoute(); refresh() },
+                        onDemoDepart = { id -> controller.server.depart(id); refresh() },
+                        onDemoArrive = { id -> controller.server.arrive(id); refresh() },
+                    )
                 }
             }
         }
@@ -102,6 +93,12 @@ class MainActivity : ComponentActivity() {
         super.onDestroy()
     }
 
+    private fun chooseDestination(destination: Destination) {
+        log("목적지 선택 ${destination.name}")
+        controller.setDestination(destination)
+        refresh()
+    }
+
     private fun handleDemo(intent: Intent?) {
         val demo = intent?.getStringExtra("demo") ?: return
         intent.removeExtra("demo")
@@ -109,7 +106,7 @@ class MainActivity : ComponentActivity() {
         val (command, arg) = demo.split(":", limit = 2).let { it[0] to it.getOrNull(1) }
         runCatching {
             when (command) {
-                "dest" -> controller.setDestination(DESTINATIONS.getValue(arg!!))
+                "dest" -> chooseDestination(PRESET_DESTINATIONS.first { it.name == arg })
                 "depart" -> controller.server.depart(arg!!)
                 "arrive" -> controller.server.arrive(arg!!)
                 "retry" -> controller.retryMyRoute()
@@ -120,18 +117,18 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun refresh() {
-        val s = controller.session
-        states.value = "그룹 ${s.status} · 목적지 ${s.destination?.name ?: "없음"}\n" +
-            MEMBERS.joinToString("   ") { "$it=${s.memberState(it)}" } +
-            when {
-                controller.canRetryMyRoute -> "\n내 차 경로 요청 실패 · retry로 다시 요청"
-                controller.myRouteFailed -> "\n내 차 경로 요청 실패"
-                else -> ""
-            }
+        model.value = groupScreenModel(
+            session = controller.session,
+            myId = ME,
+            memberIds = MEMBERS,
+            names = NAMES,
+            isLeader = true,
+            gear = controller.currentGear,
+            canRetryMyRoute = controller.canRetryMyRoute,
+        )
     }
 
     private fun log(message: String) {
         Log.i(TAG, message)
-        scheduler.post { logs += message }
     }
 }
