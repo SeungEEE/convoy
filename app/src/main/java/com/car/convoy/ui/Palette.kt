@@ -18,8 +18,8 @@ internal object Palette {
     val Danger = Color(0xFFB3261E)
     val DangerSoft = Color(0xFFFBE9E7)
 
-    /** 시연용 표시와 "경로 찾는 중". 이전 값 #B7791F는 칩에서 3.2:1이었다. */
-    val Demo = Color(0xFF8A5A0F)
+    /** 시연용 표시와 "경로 찾는 중". 이전 값 #B7791F는 칩에서 3.2:1, #8A5A0F는 가족 알림 카드 위 칩에서 4.3:1이었다. */
+    val Demo = Color(0xFF805310)
     /** 도착·활동 중. 이전 값 #1D7A46은 회색 바탕 칩에서 4.1:1이었다. */
     val Done = Color(0xFF186B3D)
 
@@ -28,6 +28,8 @@ internal object Palette {
     val ButtonFill = Color(0xFFE9EFF8)
     val ButtonLine = Color(0xFFC5D3E8)
     val DoneFill = Color(0xFFDFF2E6)
+    /** 비활성 버튼 바탕. 투명도로 흐리지 않고 이 바탕과 Soft 글자로 표시해 글자 대비를 지킨다. */
+    val DisabledFill = Color(0xFFDDE1E7)
 }
 
 /** R11-20 멤버 상태 색. "출발 전"은 이전 #7D8796(칩 3.2:1) 대신 보조 글자색을 쓴다. */

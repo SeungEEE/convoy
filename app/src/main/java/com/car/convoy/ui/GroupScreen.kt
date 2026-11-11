@@ -25,7 +25,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
@@ -205,19 +204,21 @@ private fun DestinationPicker(model: GroupScreenModel, onChoose: (Destination) -
         }
         PRESET_DESTINATIONS.forEach { d ->
             val selected = d.name == model.destinationName
+            val enabled = model.canChooseDestination
+            val label = if (selected) Color.White else if (enabled) Accent else Soft
             Row(
                 modifier = Modifier.fillMaxWidth()
                     .heightIn(min = 96.dp)
-                    .alpha(if (model.canChooseDestination) 1f else 0.45f)
-                    .background(if (selected) Accent else Palette.ButtonFill, RoundedCornerShape(12.dp))
-                    .border(2.dp, if (selected) Accent else Palette.ButtonLine, RoundedCornerShape(12.dp))
+                    // 비활성은 투명도 대신 회색 바탕으로 표시한다(글자 대비 유지, PaletteContrastTest). 선택된 목적지는 그대로 보인다.
+                    .background(if (selected) Accent else if (enabled) Palette.ButtonFill else Palette.DisabledFill, RoundedCornerShape(12.dp))
+                    .border(2.dp, if (selected) Accent else if (enabled) Palette.ButtonLine else Palette.DisabledFill, RoundedCornerShape(12.dp))
                     .clip(RoundedCornerShape(12.dp))
                     .clickable(enabled = model.canChooseDestination) { onChoose(d) }
                     .padding(horizontal = 24.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(Modifier.weight(1f)) {
-                    Text(d.name, fontSize = 34.sp, fontWeight = FontWeight.Bold, color = if (selected) Color.White else Accent)
+                    Text(d.name, fontSize = 34.sp, fontWeight = FontWeight.Bold, color = label)
                     Text(
                         d.address, fontSize = SMALL, maxLines = 1, overflow = TextOverflow.Ellipsis,
                         color = if (selected) Color.White.copy(alpha = 0.85f) else Soft,
@@ -226,7 +227,7 @@ private fun DestinationPicker(model: GroupScreenModel, onChoose: (Destination) -
                 Text(
                     if (selected) "✓ 지금 목적지" else "선택",
                     fontSize = BODY, fontWeight = FontWeight.Bold,
-                    color = if (selected) Color.White else Accent,
+                    color = label,
                 )
             }
         }

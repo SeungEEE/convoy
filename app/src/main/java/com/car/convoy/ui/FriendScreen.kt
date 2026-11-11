@@ -22,7 +22,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
@@ -115,17 +114,17 @@ private fun FriendCard(row: FriendRow, onRequest: (String) -> Unit, onCancel: ()
 
 @Composable
 private fun RequestButton(enabled: Boolean, onClick: () -> Unit) {
-    // 그룹 화면 목적지 버튼과 같은 순서: alpha → background(shape) → border → clip → clickable.
+    // 그룹 화면 목적지 버튼과 같은 순서: background(shape) → border → clip → clickable.
+    // 비활성은 투명도 대신 회색 바탕과 보조 글자색으로 표시한다(글자 대비 유지).
     Box(
         Modifier.widthIn(min = 260.dp).heightIn(min = 88.dp)
-            .alpha(if (enabled) 1f else 0.45f)
-            .background(Palette.ButtonFill, RoundedCornerShape(12.dp))
-            .border(2.dp, Palette.ButtonLine, RoundedCornerShape(12.dp))
+            .background(if (enabled) Palette.ButtonFill else Palette.DisabledFill, RoundedCornerShape(12.dp))
+            .border(2.dp, if (enabled) Palette.ButtonLine else Palette.DisabledFill, RoundedCornerShape(12.dp))
             .clip(RoundedCornerShape(12.dp))
             .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = 24.dp),
         contentAlignment = Alignment.Center,
-    ) { Text("따라가기 요청", fontSize = BODY, fontWeight = FontWeight.Bold, color = Accent) }
+    ) { Text("따라가기 요청", fontSize = BODY, fontWeight = FontWeight.Bold, color = if (enabled) Accent else Soft) }
 }
 
 @Composable
