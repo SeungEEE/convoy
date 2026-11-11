@@ -56,7 +56,9 @@ fun destinationPickerModel(
             if (full != null) n.copy(address = full.address) else n
         }
     val marks: (Destination) -> PickRow = { PickRow(it, group != null && sameListedPlace(it, group)) }
-    val shownRecent = usableRecent.take(MAX_RECENT)
+    // Convoy가 경로를 요청하면 내비가 같은 곳을 최근 목적지에 한 번 더 남긴다. 같은 곳은 처음 것만 보여 준다.
+    val distinctRecent = usableRecent.fold(emptyList<Destination>()) { acc, d -> if (acc.any { sameListedPlace(it, d) }) acc else acc + d }
+    val shownRecent = distinctRecent.take(MAX_RECENT)
     val shownBookmarks = bookmarks.filter { it.usable() }
     val fallback = shownRecent.isEmpty() && shownBookmarks.isEmpty()
     return DestinationPickerModel(
