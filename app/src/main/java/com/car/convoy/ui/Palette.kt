@@ -57,6 +57,15 @@ internal object Palette {
     val PendingFill = Color(0xFFFFF1DC)
     val MemberText = Color(0xFF1A3FA8)
     val MemberFill = Color(0xFFE3EAFD)
+
+    /** 시안의 사람별 아바타 색(연한 바탕 to 진한 글자). 대비 4.5:1 이상(HomeFollowLockAndAvatarTest). */
+    val AvatarColors = listOf(
+        Color(0xFFE3F4EA) to Color(0xFF0F5A36),
+        Color(0xFFFDEFE3) to Color(0xFF8A4B00),
+        Color(0xFFEDE7FB) to Color(0xFF4A2F8F),
+        Color(0xFFFDECEA) to Color(0xFF8F1D14),
+        Color(0xFFE3EAFD) to Color(0xFF1A3FA8),
+    )
 }
 
 /** R11-20 멤버 상태 색. "출발 전"은 이전 #7D8796(칩 3.2:1) 대신 보조 글자색을 쓴다. */

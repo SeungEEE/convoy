@@ -175,7 +175,7 @@ fun familyCard(family: FamilyController?): FamilyCard {
     val name = family?.familyName
     return when (family?.state) {
         FamilyState.PENDING -> FamilyCard(FamilyCardState.PENDING, name, "${name}님 수락 대기", showCancel = true, showRelease = false)
-        FamilyState.ACTIVE -> FamilyCard(FamilyCardState.ACTIVE, name, "$name · 사고 알림 받는 중", showCancel = false, showRelease = true)
+        FamilyState.ACTIVE -> FamilyCard(FamilyCardState.ACTIVE, name, "사고가 의심되면 ${name}님에게 알려요", showCancel = false, showRelease = true)
         else -> FamilyCard.NONE
     }
 }

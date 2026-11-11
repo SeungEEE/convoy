@@ -53,15 +53,6 @@ private val Demo = Palette.Demo
 private val CardShape = RoundedCornerShape(32.dp)
 private val ButtonShape = RoundedCornerShape(20.dp)
 
-/** 시안의 사람별 아바타 색(연한 바탕, 진한 글자). 대비는 4.5:1 이상. */
-private val AvatarColors = listOf(
-    Color(0xFFE3F4EA) to Color(0xFF0F5A36),
-    Color(0xFFFDEFE3) to Color(0xFF8A4B00),
-    Color(0xFFEDE7FB) to Color(0xFF4A2F8F),
-    Color(0xFFFDECEA) to Color(0xFF8F1D14),
-    Color(0xFFE3EAFD) to Color(0xFF1A3FA8),
-)
-
 /** SPEC R2-5, R4-5, R9-5: 홈(시안). [model]만 그리고, 누름은 콜백으로 넘긴다. */
 @Composable
 fun HomeScreen(
@@ -86,7 +77,7 @@ fun HomeScreen(
     // 사람마다 같은 아바타 색을 쓴다(연결된 사람과 함께 출발 칩).
     val avatar: (String) -> Pair<Color, Color> = { id ->
         val i = model.people.indexOfFirst { it.id == id }.coerceAtLeast(0)
-        AvatarColors[i % AvatarColors.size]
+        Palette.AvatarColors[i % Palette.AvatarColors.size]
     }
     // R8-10: 사고 알림 카드는 가족 카드 바로 아래에 붙는다(가족은 그룹 주행과 무관, R9-1).
     val familyCard: @Composable () -> Unit = { FamilyCardView(model.familyCard, onReleaseFamily); belowFamily() }
@@ -182,13 +173,7 @@ private fun FamilyCardView(card: FamilyCard, onRelease: () -> Unit, modifier: Mo
                 }
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(card.name, fontSize = 40.sp, fontWeight = FontWeight.ExtraBold, color = Ink)
-                    Text(
-                        when (card.state) {
-                            FamilyCardState.ACTIVE -> "사고가 의심되면 ${card.name}님에게 알려요"
-                            else -> card.message
-                        },
-                        fontSize = SMALL, color = Soft,
-                    )
+                    Text(card.message, fontSize = SMALL, color = Soft)
                 }
             } else {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
