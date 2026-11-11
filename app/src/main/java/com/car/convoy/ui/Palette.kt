@@ -15,7 +15,20 @@ internal object Palette {
     val BrandCyan = Color(0xFF17CFE0)
     val BrandCyanFill = Color(0xFFD7F5F7)
 
-    val Page = Color(0xFFF2F4F7)
+    /**
+     * 브랜드 색은 아이콘의 파랑 하나다. 버튼·선택·큰 카드처럼 채우는 곳에 쓰고 글자는 흰색을 쓴다(5.6:1).
+     * 남색 카드는 쓰지 않는다(화면이 어두워진다).
+     */
+    val Brand = BrandBlue
+
+    /** 브랜드 카드 안의 작은 칸, 브랜드 카드 위 비활성 버튼. 밝게 하면 흰 글자 대비가 떨어지므로 더 진하게 한다. */
+    val BrandDeep = Color(0xFF065A9B)
+
+    /** 브랜드 위 보조 글자(브랜드 5.0:1, 진한 브랜드 6:1 이상). */
+    val OnBrandSoft = Color(0xFFE8F3FC)
+
+    /** 화면 바탕: 브랜드 기운이 아주 약한 흰색. */
+    val Page = Color(0xFFF4F8FC)
     val Card = Color.White
     val Ink = Color(0xFF10233F)
     /** 보조 글자. 이전 값 #5E6978은 회색 바탕 칩에서 4.3:1이었다. */

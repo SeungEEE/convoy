@@ -262,14 +262,14 @@ private fun MemberChip(chip: DepartureChip) {
 private fun PrimaryAction(title: String, sub: String, enabled: Boolean, onClick: () -> Unit) {
     Column(
         Modifier.fillMaxWidth().heightIn(min = 120.dp)
-            .background(if (enabled) Accent else Palette.DisabledFill, RoundedCornerShape(24.dp))
+            .background(if (enabled) Palette.Brand else Palette.DisabledFill, RoundedCornerShape(24.dp))
             .clip(RoundedCornerShape(24.dp))
             .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = 28.dp, vertical = 20.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Text(title, fontSize = TITLE, fontWeight = FontWeight.ExtraBold, color = if (enabled) Color.White else Soft)
-        Text(sub, fontSize = SMALL, color = if (enabled) Palette.MemberFill else Soft)
+        Text(sub, fontSize = SMALL, color = if (enabled) Palette.OnBrandSoft else Soft)
     }
 }
 

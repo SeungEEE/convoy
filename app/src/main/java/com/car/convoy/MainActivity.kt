@@ -6,11 +6,8 @@ import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.ui.graphics.Color
 import com.car.convoy.data.AccidentController
 import com.car.convoy.data.Cancellable
 import com.car.convoy.data.FamilyController
@@ -34,6 +31,7 @@ import com.car.convoy.domain.TelltaleType
 import com.car.convoy.domain.UserStatus
 import com.car.convoy.domain.port.ConvoyServer
 import com.car.convoy.ui.AccidentPrompt
+import com.car.convoy.ui.ConvoyTheme
 import com.car.convoy.ui.AccidentScreenModel
 import com.car.convoy.ui.DestinationPickerModel
 import com.car.convoy.ui.DriveNavButtons
@@ -47,7 +45,6 @@ import com.car.convoy.ui.HomeScreen
 import com.car.convoy.ui.HomeScreenModel
 import com.car.convoy.ui.MY_NAME
 import com.car.convoy.ui.PRESET_DESTINATIONS
-import com.car.convoy.ui.Palette
 import com.car.convoy.ui.SentFamilyCard
 import com.car.convoy.ui.accidentScreenModel
 import com.car.convoy.ui.groupScreenModel
@@ -56,29 +53,6 @@ import com.car.convoy.ui.homeScreenModel
 
 private const val TAG = "Convoy"
 private const val ME = "me"
-
-private val convoyColorScheme = lightColorScheme(
-    primary = Palette.Accent,
-    onPrimary = Color.White,
-    primaryContainer = Palette.MemberFill,
-    onPrimaryContainer = Palette.BrandNavy,
-    secondary = Palette.BrandCyan,
-    onSecondary = Palette.BrandNavy,
-    secondaryContainer = Palette.BrandCyanFill,
-    onSecondaryContainer = Palette.BrandNavy,
-    tertiary = Palette.Driving,
-    tertiaryContainer = Palette.ButtonFill,
-    onTertiaryContainer = Palette.Ink,
-    background = Palette.Page,
-    onBackground = Palette.Ink,
-    surface = Palette.Card,
-    onSurface = Palette.Ink,
-    surfaceVariant = Palette.ButtonFill,
-    onSurfaceVariant = Palette.Ink,
-    outline = Palette.ButtonLine,
-    error = Palette.Danger,
-    onError = Color.White,
-)
 
 // 작업 23(R4-5): 외부 서버가 없어 앱에 미리 정해 둔 가상 인물. 서준(오프라인)은 보이지 않는다.
 private val PEOPLE = listOf(
@@ -174,7 +148,7 @@ class MainActivity : ComponentActivity() {
         )
 
         setContent {
-            MaterialTheme(colorScheme = convoyColorScheme) {
+            ConvoyTheme {
                 val accidentUi = accidentModel.value
                 val familyChip: @Composable () -> Unit = { homeModel.value?.let { h -> FamilyChip(h.familyHeader) } }
                 Box {

@@ -1,6 +1,7 @@
 package com.car.convoy.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -38,6 +39,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.painterResource
+import com.car.convoy.R
 import com.car.convoy.domain.Destination
 import com.car.convoy.domain.GroupMemberState
 
@@ -83,6 +86,7 @@ fun GroupScreen(
         header = { single ->
             HeaderRows(
                 single,
+                wordmark = false,
                 lead = { nav() },
                 trail = {
                     Chip(model.groupStatusLabel, if (model.finished) Done else Accent, BODY)
@@ -129,15 +133,32 @@ internal fun ScreenFrame(
     } }
 }
 
-/** 머리줄: "Convoy"와 탭([lead]), 그 뒤 상태 표시([trail]). 1열이면 두 줄로 나눈다. */
+/**
+ * 머리줄 왼쪽의 앱 아이콘. Pleos 가이드대로 아이콘에 글자를 함께 둔다(홈). 버튼이 많은 주행 화면은 아이콘만 두고
+ * 옆에 화면 제목이 온다([wordmark] = false).
+ */
+@Composable
+internal fun BrandMark(wordmark: Boolean) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+        Image(
+            painter = painterResource(R.drawable.convoy_launcher_art),
+            contentDescription = if (wordmark) null else "Convoy",
+            modifier = Modifier.size(64.dp),
+        )
+        if (wordmark) Text("Convoy", fontSize = 40.sp, fontWeight = FontWeight.ExtraBold, color = Palette.Ink)
+    }
+}
+
+/** 머리줄: 앱 아이콘과 [lead], 그 뒤 상태 표시([trail]). 1열이면 두 줄로 나눈다. */
 @Composable
 internal fun HeaderRows(
     single: Boolean,
     lead: @Composable () -> Unit,
     trail: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit,
+    wordmark: Boolean = true,
 ) {
     val first: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit = {
-        Text("Convoy", fontSize = 40.sp, fontWeight = FontWeight.Bold, color = Accent)
+        BrandMark(wordmark)
         lead()
     }
     if (single) {
@@ -225,28 +246,28 @@ private fun DestinationPicker(
 @Composable
 private fun NaviSuggestionCard(d: Destination, enabled: Boolean, onChoose: (Destination) -> Unit, onIgnore: (Destination) -> Unit) {
     Column(
-        Modifier.fillMaxWidth().background(Ink, RoundedCornerShape(20.dp)).padding(22.dp),
+        Modifier.fillMaxWidth().background(Palette.Brand, RoundedCornerShape(20.dp)).padding(22.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text("내비에서 정한 목적지", fontSize = SMALL, color = Color(0xFFC9D0DA))
+        Text("내비에서 정한 목적지", fontSize = SMALL, color = Palette.OnBrandSoft)
         Text(d.name, fontSize = 34.sp, fontWeight = FontWeight.Bold, color = Color.White)
-        Text(d.address, fontSize = SMALL, color = Color(0xFFC9D0DA), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(d.address, fontSize = SMALL, color = Palette.OnBrandSoft, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Box(
                 Modifier.weight(1f).heightIn(min = 84.dp)
-                    .background(if (enabled) Color.White else Color(0xFF3B4552), RoundedCornerShape(16.dp))
+                    .background(if (enabled) Color.White else Palette.BrandDeep, RoundedCornerShape(16.dp))
                     .clip(RoundedCornerShape(16.dp))
                     .clickable(enabled = enabled) { onChoose(d) },
                 contentAlignment = Alignment.Center,
-            ) { Text("그룹과 함께 가기", fontSize = BODY, fontWeight = FontWeight.Bold, color = if (enabled) Accent else Color(0xFFC9D0DA)) }
+            ) { Text("그룹과 함께 가기", fontSize = BODY, fontWeight = FontWeight.Bold, color = if (enabled) Accent else Palette.OnBrandSoft) }
             Box(
                 Modifier.widthIn(min = 140.dp).heightIn(min = 84.dp)
-                    .background(if (enabled) Color.Transparent else Color(0xFF3B4552), RoundedCornerShape(16.dp))
-                    .border(2.dp, Color(0xFF56606D), RoundedCornerShape(16.dp))
+                    .background(if (enabled) Color.Transparent else Palette.BrandDeep, RoundedCornerShape(16.dp))
+                    .border(2.dp, Palette.OnBrandSoft, RoundedCornerShape(16.dp))
                     .clip(RoundedCornerShape(16.dp))
                     .clickable(enabled = enabled) { onIgnore(d) },
                 contentAlignment = Alignment.Center,
-            ) { Text("무시", fontSize = BODY, fontWeight = FontWeight.Bold, color = if (enabled) Color(0xFFE1E5EB) else Color(0xFFC9D0DA)) }
+            ) { Text("무시", fontSize = BODY, fontWeight = FontWeight.Bold, color = if (enabled) Color.White else Palette.OnBrandSoft) }
         }
     }
 }
@@ -260,8 +281,8 @@ private fun PickLine(row: PickRow, enabled: Boolean, onChoose: (Destination) -> 
         modifier = Modifier.fillMaxWidth()
             .heightIn(min = 96.dp)
             // 비활성은 투명도 대신 회색 바탕으로 표시한다(글자 대비 유지, PaletteContrastTest). 지금 목적지는 그대로 보인다.
-            .background(if (selected) Accent else if (enabled) Palette.ButtonFill else Palette.DisabledFill, RoundedCornerShape(12.dp))
-            .border(2.dp, if (selected) Accent else if (enabled) Palette.ButtonLine else Palette.DisabledFill, RoundedCornerShape(12.dp))
+            .background(if (selected) Palette.Brand else if (enabled) Palette.ButtonFill else Palette.DisabledFill, RoundedCornerShape(12.dp))
+            .border(2.dp, if (selected) Palette.Brand else if (enabled) Palette.ButtonLine else Palette.DisabledFill, RoundedCornerShape(12.dp))
             .clip(RoundedCornerShape(12.dp))
             .clickable(enabled = clickable) { onChoose(d) }
             .padding(horizontal = 24.dp, vertical = 12.dp),
