@@ -168,3 +168,13 @@
 | 시연 [거절] | 친구 화면에서 탭해 따라가기가 끝나고 버튼이 돌아오는 것을 확인했다(작업 22에서 못 한 것) |
 | **주야간 신호** | `adb shell cmd uimode night yes`를 보내자 Pleos 시스템 화면(주행 정보, 상태 바 등)이 어두워졌다. 즉 에뮬레이터에서는 **Android `uiMode` 야간 모드**로 주야간이 전달된다(실차는 미확인). Convoy는 밝은 색만 있어 밝게 남았고, `configChanges`의 `uiMode` 덕분에 목적지 등 상태는 유지됐다. 다크 테마를 만들면 이 신호(`isSystemInDarkTheme`)를 쓰면 된다 |
 | 비활성 버튼 | 투명도(0.45)로 흐리던 것을 회색 바탕과 보조 글자색으로 바꿨다. D에서 목적지·따라가기 버튼이 회색으로 바뀌고 글자는 읽힌다(Codex 리뷰, 대비 테스트로 고정) |
+
+## 목적지 출처 시험 (2026-11-11, `spike/navi-destinations`, Pleos Emulator 2.1.0)
+NaviHelper 3.0.5 AAR을 javap로 확인한 API(`getBookmarkInfo`, `getRecentDestinationInfo`, `getDestinationInfo`, `onDestinationChanged`)를 에뮬레이터에서 불러 봤다. 시험 코드는 머지하지 않는다.
+| 확인 | 결과 |
+|---|---|
+| 최근 목적지 | `onRecentDestinationInfo`로 목록이 왔다. Convoy가 요청한 곳(강남역)과 **내비에서 직접 검색해 정한 곳(현대백화점 판교점)**이 최근 순으로 들어 있고, 이름·전체 주소·좌표·POI ID가 있다 |
+| 현재 내비 목적지 | `getDestinationInfo()`를 부르면 `onDestinationInfo`로 이름, 좌표, 남은 거리(m)·시간(초)이 왔다. 주소는 "분당구 백현동"처럼 짧게 왔다. 안내 중이 아니면 이름이 빈 값이다 |
+| 목적지 변경 알림 | `onDestinationChanged`는 Convoy가 `requestRoute`했을 때도, 내비 화면에서 검색해 목적지를 바꿨을 때도 오지 않았다. 내비에서 바꿨을 때는 `onRouteStarted`도 오지 않았다. 그래서 Convoy 화면으로 돌아올 때 물어보는 방식으로 한다(R11-21) |
+| 즐겨찾기 | `onBookmarkInfo`로 집(`HOME`)·회사(`OFFICE`) 두 칸이 왔지만 이름이 비고 좌표가 0,0이었다(등록된 곳 없음) |
+| 내비 검색 | 내비 화면의 검색으로 "판교"를 찾아 [목적지로]를 누르면 바로 안내가 바뀐다. 목적지/경유지를 묻는 창이 뜬다 |
