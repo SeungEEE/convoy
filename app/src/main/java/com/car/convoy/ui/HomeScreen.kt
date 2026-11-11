@@ -396,20 +396,3 @@ private fun DemoButton(label: String, modifier: Modifier, onClick: () -> Unit) {
         contentAlignment = Alignment.Center,
     ) { Text(label, fontSize = SMALL, fontWeight = FontWeight.Bold, color = Demo) }
 }
-
-/** R11-20: 그룹 주행 화면 머리줄의 [홈으로]·[주행 끝내기]. 둘 다 주행 중에도 된다(R10). */
-@Composable
-fun DriveNavButtons(onHome: () -> Unit, onEnd: () -> Unit) {
-    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        SoftButton("홈으로", enabled = true, onClick = onHome)
-        Box(
-            Modifier.widthIn(min = 200.dp).heightIn(min = 80.dp)
-                .background(Card, ButtonShape)
-                .border(2.dp, Color(0xFFE8B4AE), ButtonShape)
-                .clip(ButtonShape)
-                .clickable(onClick = onEnd)
-                .padding(horizontal = 24.dp),
-            contentAlignment = Alignment.Center,
-        ) { Text("주행 끝내기", fontSize = SMALL, fontWeight = FontWeight.Bold, color = Palette.Danger) }
-    }
-}

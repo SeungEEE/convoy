@@ -34,7 +34,6 @@ import com.car.convoy.ui.AccidentPrompt
 import com.car.convoy.ui.ConvoyTheme
 import com.car.convoy.ui.AccidentScreenModel
 import com.car.convoy.ui.DestinationPickerModel
-import com.car.convoy.ui.DriveNavButtons
 import com.car.convoy.ui.FamilyChip
 import com.car.convoy.ui.FollowScreen
 import com.car.convoy.ui.FollowScreenModel
@@ -178,7 +177,8 @@ class MainActivity : ComponentActivity() {
                             onOpenNavi = naviLaunchIntent()?.let { intent -> { openNavi(intent) } },
                             headerExtra = familyChip,
                             belowMembers = { accidentUi?.sentCard?.let { c -> SentFamilyCard(c, sentTo) } },
-                            nav = { DriveNavButtons(onHome = ::goHome, onEnd = ::endDrive) },
+                            onHome = ::goHome,
+                            onEnd = ::endDrive,
                         )
                     } else {
                         homeModel.value?.let {
