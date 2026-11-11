@@ -59,15 +59,19 @@ fun HomeScreen(
     onReleaseFamily: () -> Unit = {},
     onDemoFamilyAccept: () -> Unit = {},
     onDemoFamilyDecline: () -> Unit = {},
+    onFollow: (String) -> Unit = {},
+    onDemoFollowAccept: () -> Unit = {},
+    onDemoFollowDecline: () -> Unit = {},
     headerExtra: @Composable () -> Unit = {},
     belowFamily: @Composable () -> Unit = {},
 ) {
     // R8-10: 사고 알림 카드는 가족 카드 바로 아래에 붙는다(가족은 그룹 주행과 무관, R9-1).
     val familyCard: @Composable () -> Unit = { FamilyCardView(model.familyCard, onReleaseFamily); belowFamily() }
-    val departure: @Composable () -> Unit = { DepartureCard(model, onStartDestination, onResume, onDisband) }
+    val departure: @Composable () -> Unit = { DepartureCard(model, onStartDestination, onResume, onDisband, onFollow) }
     val demo: @Composable () -> Unit = {
         model.pendingFamily?.let { DemoPanel("${it.name}님이 가족 요청을 받았어요", onDemoFamilyAccept, onDemoFamilyDecline) }
         model.pendingInvite?.let { DemoPanel("${it.name}님이 그룹 초대를 받았어요", onDemoAccept, onDemoDecline) }
+        model.pendingFollow?.let { DemoPanel("${it.name}님이 따라가기 요청을 받았어요", onDemoFollowAccept, onDemoFollowDecline) }
     }
     val people: @Composable () -> Unit = { PeopleCard(model, onInvite, onDesignateFamily) }
     ScreenFrame(
@@ -173,7 +177,7 @@ private fun SectionTitle(title: String, tag: String? = null, trailing: @Composab
 
 /** R4-5 함께 출발: 이번 주행 그룹의 멤버와 출발 버튼. 진행 중이면 [진행 중인 주행으로]. */
 @Composable
-private fun DepartureCard(model: HomeScreenModel, onStart: () -> Unit, onResume: () -> Unit, onDisband: () -> Unit) {
+private fun DepartureCard(model: HomeScreenModel, onStart: () -> Unit, onResume: () -> Unit, onDisband: () -> Unit, onFollow: (String) -> Unit) {
     Column(
         Modifier.fillMaxWidth().background(Card, CardShape).border(1.dp, Color(0xFFE3E6EA), CardShape).padding(28.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp),
@@ -190,12 +194,30 @@ private fun DepartureCard(model: HomeScreenModel, onStart: () -> Unit, onResume:
         if (model.departure.size == 1) {
             Text("아래 연결된 사람을 초대해 그룹을 꾸려요", fontSize = SMALL, color = Soft)
         }
-        if (model.showResume) {
-            PrimaryAction("진행 중인 주행으로", "목적지로 함께 가는 중이에요", enabled = true, onClick = onResume)
-        } else {
-            PrimaryAction("목적지로 함께", "모두의 내비가 함께 바뀌어요", enabled = model.canStartDestination, onClick = onStart)
-            if (!model.canStartDestination && model.departure.any { !it.isLeader && !it.pending }) {
-                Text("정차 중에만 출발할 수 있어요", fontSize = SMALL, color = Soft)
+        when {
+            model.showResume -> PrimaryAction("진행 중인 주행으로", model.resumeLabel, enabled = true, onClick = onResume)
+            // R12-1: 따라가기 요청을 보내고 수락을 기다리는 중.
+            model.followWaiting != null -> Box(
+                Modifier.fillMaxWidth().heightIn(min = 100.dp).background(Palette.PendingFill, RoundedCornerShape(24.dp)).padding(horizontal = 28.dp),
+                contentAlignment = Alignment.CenterStart,
+            ) { Text(model.followWaiting, fontSize = BODY, fontWeight = FontWeight.Bold, color = Palette.PendingText) }
+            else -> {
+                PrimaryAction("목적지로 함께", "모두의 내비가 함께 바뀌어요", enabled = model.canStartDestination, onClick = onStart)
+                // R12-1 앞차 따라가기: 수락한 멤버 중 한 명. 업무 중이면 고를 수 없다.
+                if (model.followChoices.isNotEmpty()) {
+                    Text("앞차 따라가기 · 목적지 없이 멤버 차를 따라가요", fontSize = SMALL, fontWeight = FontWeight.Bold, color = Ink)
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        model.followChoices.forEach { c ->
+                            OutlineButton("${c.name} 따라가기", enabled = c.canFollow, width = 260.dp) { onFollow(c.id) }
+                        }
+                    }
+                    model.followChoices.firstNotNullOfOrNull { c -> c.note?.let { "${c.name}: $it" } }?.let {
+                        Text(it, fontSize = SMALL, color = Soft)
+                    }
+                }
+                if (!model.canStartDestination && model.departure.any { !it.isLeader && !it.pending }) {
+                    Text("정차 중에만 출발할 수 있어요", fontSize = SMALL, color = Soft)
+                }
             }
         }
     }

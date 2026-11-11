@@ -88,6 +88,12 @@ class NaviHelperAdapter(
         runCatching { navi.release() }
     }
 
+    /** SPEC R3-3, R12-4: [끊기] 때 따라가던 경로를 취소한다. */
+    override fun cancelRoute() {
+        log("cancelRoute")
+        runCatching { navi.cancelRoute() }.onFailure { log("cancelRoute 실패: $it") }
+    }
+
     override fun requestRoute(destination: Destination) {
         log("requestRoute name=[${destination.name}] address=[${destination.address}]")
         // SDK 예외(퍼미션 누락 등)가 GroupSession의 멤버 순회를 끊지 않도록 여기서 받고,

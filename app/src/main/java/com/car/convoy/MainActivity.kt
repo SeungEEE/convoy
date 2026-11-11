@@ -14,6 +14,7 @@ import androidx.compose.ui.graphics.Color
 import com.car.convoy.data.AccidentController
 import com.car.convoy.data.Cancellable
 import com.car.convoy.data.FamilyController
+import com.car.convoy.data.FollowNavigator
 import com.car.convoy.data.FriendController
 import com.car.convoy.data.GroupController
 import com.car.convoy.data.GroupRoster
@@ -22,6 +23,9 @@ import com.car.convoy.data.navi.NaviHelperAdapter
 import com.car.convoy.data.vehicle.VehicleSource
 import com.car.convoy.domain.Destination
 import com.car.convoy.domain.FamilyState
+import com.car.convoy.domain.FollowEvent
+import com.car.convoy.domain.FollowState
+import com.car.convoy.domain.ReportLocation
 import com.car.convoy.domain.Friend
 import com.car.convoy.domain.Gear
 import com.car.convoy.domain.TelltaleReading
@@ -34,6 +38,9 @@ import com.car.convoy.ui.AccidentScreenModel
 import com.car.convoy.ui.DestinationPickerModel
 import com.car.convoy.ui.DriveNavButtons
 import com.car.convoy.ui.FamilyChip
+import com.car.convoy.ui.FollowScreen
+import com.car.convoy.ui.FollowScreenModel
+import com.car.convoy.ui.followScreenModel
 import com.car.convoy.ui.GroupScreen
 import com.car.convoy.ui.GroupScreenModel
 import com.car.convoy.ui.HomeScreen
@@ -82,13 +89,14 @@ private val PEOPLE = listOf(
     Friend("p5", "서준", UserStatus.OFFLINE),
 )
 
-private enum class Screen { HOME, DRIVE }
+private enum class Screen { HOME, DRIVE, FOLLOW }
 
 /**
  * 작업 23 홈(R2-5, R4-5)과 그룹 주행(R11-20). 나는 리더이고 실제 SDK를 쓰며, 그룹 멤버는 가상 인물이다(R11-18).
  * adb 시연 명령(녹화·자동 확인용): adb shell am start -n com.car.convoy/.MainActivity --es demo <명령>
  *   홈: invite:p1, accept, decline(첫 수락 대기에 응답), start(목적지로 함께), disband, status:busy
  *   가족(R9): family:p1, faccept, fdecline, frelease
+ *   앞차 따라가기(R12): lead:p1, laccept, ldecline, move:100, unfollow
  *   주행: dest:서울역, depart:p1, arrive:p1, retry, home, end, resume
  *   사고(R8): airbag:on|off, ok, airbaglater(8초 뒤 켜기, R8-11 확인용)
  */
@@ -100,10 +108,11 @@ class MainActivity : ComponentActivity() {
     private val groupModel = mutableStateOf<GroupScreenModel?>(null)
     private val accidentModel = mutableStateOf<AccidentScreenModel?>(null)
     private val pickerModel = mutableStateOf<DestinationPickerModel?>(null)
+    private val followModel = mutableStateOf<FollowScreenModel?>(null)
 
     private val roster = GroupRoster(PEOPLE)
     private val family = FamilyController(PEOPLE) // 가족은 그룹과 무관하게 항상 연결(R9-1).
-    private val me = FriendController(PEOPLE) // 내 상태(R2-1). 따라가기는 작업 25에서 쓴다.
+    private val me = FriendController(PEOPLE) // 내 상태(R2-1)와 따라가기 요청·수락·끊기(R3).
     private val names = PEOPLE.associate { it.id to it.name } + (ME to MY_NAME)
 
     /** SDK가 기어를 다시 보내 주지 않으므로 여기서 들고, 주행마다 새 컨트롤러에 넘긴다. */
@@ -119,6 +128,11 @@ class MainActivity : ComponentActivity() {
     private var bookmarkDestinations: List<Destination> = emptyList()
     private var ignoredSuggestion: Destination? = null
     private var naviReady = false
+
+    // ---- 작업 25 앞차 따라가기(R12) ----
+    private lateinit var follower: FollowNavigator
+    private var myLocation: ReportLocation? = null
+    private var followTicker: Cancellable? = null
 
     private lateinit var navi: NaviHelperAdapter
     private lateinit var vehicle: VehicleSource
@@ -139,13 +153,17 @@ class MainActivity : ComponentActivity() {
             routeStarted = { name -> postToDrive { it.onRouteStarted(name) } },
             destinationArrived = { n, a -> postToDrive { it.onDestinationArrived(n, a) } },
             // requestRoute 예외는 호출 중 동기로 오므로 큐에 넣지 않고 바로 알린다(R11-19). 화면 갱신만 나중에 한다.
-            routeFailed = { drive?.onMyRouteFailed(); scheduler.post { refresh() } },
-            locationReceived = { loc -> scheduler.post { accident.onLocation(loc) } },
+            routeFailed = {
+                if (follower.active) follower.onRouteFailed() else drive?.onMyRouteFailed()
+                scheduler.post { refresh() }
+            },
+            locationReceived = { loc -> scheduler.post { myLocation = loc; accident.onLocation(loc) } },
             log = ::log,
             naviDestination = { d -> scheduler.post { naviDestination = d; refresh() } },
             recentDestinations = { list -> scheduler.post { recentDestinations = list; refresh() } },
             bookmarks = { list -> scheduler.post { bookmarkDestinations = list; refresh() } },
         )
+        follower = FollowNavigator(navi, scheduler)
         // R8-9: 시연은 가족 없이 시작한다. 가족 상태는 FamilyController에서 읽는다(R9-1). 가족이 없으면 보내지 않는다(R8-5).
         accident = AccidentController(familyServer, navi, scheduler, FamilyState.NONE, ::onAccidentChange, familySource = { family.state })
         vehicle = VehicleSource(
@@ -161,7 +179,17 @@ class MainActivity : ComponentActivity() {
                 val familyChip: @Composable () -> Unit = { homeModel.value?.let { h -> FamilyChip(h.familyHeader) } }
                 Box {
                     val group = groupModel.value
-                    if (screen.value == Screen.DRIVE && group != null) {
+                    val followUi = followModel.value
+                    if (screen.value == Screen.FOLLOW && followUi != null) {
+                        FollowScreen(
+                            model = followUi,
+                            onHome = ::goHome,
+                            onStop = ::stopFollow,
+                            onRetry = { follower.retry(); refresh() },
+                            onDemoMove = ::moveLeader,
+                            headerExtra = familyChip,
+                        )
+                    } else if (screen.value == Screen.DRIVE && group != null) {
                         GroupScreen(
                             model = group,
                             onChooseDestination = ::chooseDestination,
@@ -189,6 +217,9 @@ class MainActivity : ComponentActivity() {
                                 onReleaseFamily = ::releaseFamily,
                                 onDemoFamilyAccept = { respondFamily(true) },
                                 onDemoFamilyDecline = { respondFamily(false) },
+                                onFollow = ::requestFollow,
+                                onDemoFollowAccept = { respondFollow(true) },
+                                onDemoFollowDecline = { respondFollow(false) },
                                 headerExtra = familyChip,
                                 belowFamily = { accidentUi?.sentCard?.let { c -> SentFamilyCard(c, sentTo) } },
                             )
@@ -251,7 +282,7 @@ class MainActivity : ComponentActivity() {
     // ---- 홈(R4-5) ----
 
     private fun invite(id: String) {
-        val sent = roster.invite(id, gear, driveActive = drive != null)
+        val sent = roster.invite(id, gear, driveActive = anyDrive)
         log("그룹 초대 $id ${if (sent) "보냄" else "조건 안 맞아 무시"}")
         refresh()
     }
@@ -266,7 +297,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun disband() {
-        val done = roster.disband(gear, driveActive = drive != null)
+        val done = roster.disband(gear, driveActive = anyDrive)
         log("그룹 해산 ${if (done) "됨" else "조건 안 맞아 무시"}")
         refresh()
     }
@@ -274,7 +305,7 @@ class MainActivity : ComponentActivity() {
     /** R4-5 [목적지로 함께]: 그 시점의 그룹 멤버로 새 세션을 만든다(R11-22). */
     private fun startDestination() {
         val model = homeModel.value ?: return
-        if (!model.canStartDestination) return
+        if (!model.canStartDestination || anyDrive) return
         driveMembers = listOf(ME) + roster.members
         drive = GroupController(ME, driveMembers, navi, scheduler, initialGear = gear) { u ->
             log("${u.memberId} ${u.event} → ${drive?.session?.memberState(u.memberId)} " +
@@ -289,6 +320,7 @@ class MainActivity : ComponentActivity() {
 
     private fun resume() {
         if (drive != null) screen.value = Screen.DRIVE
+        if (follower.active) { screen.value = Screen.FOLLOW; startFollowTicker() }
         queryDestinationSources()
         refresh()
     }
@@ -308,6 +340,62 @@ class MainActivity : ComponentActivity() {
         driveMembers = emptyList()
         screen.value = Screen.HOME
         refresh()
+    }
+
+    // ---- 앞차 따라가기(R12) ----
+
+    /** 진행 중인 주행이 있는가(R4-5): 목적지로 함께, 또는 따라가기(요청 대기 포함). */
+    private val anyDrive: Boolean get() = drive != null || me.follow != null
+
+    /** R12-1: 수락한 멤버만, 주행이 없을 때만 요청한다. 업무 중·주행 중 판단은 FriendController(canStartFollowRequest). */
+    private fun requestFollow(id: String) {
+        val sent = id in roster.members && drive == null && me.requestFollow(id, gear)
+        log("따라가기 요청 $id ${if (sent) "보냄" else "조건 안 맞아 무시"}")
+        refresh()
+    }
+
+    /** 시연용 패널: 앞차가 될 멤버의 수락·거절(R3). 수락하면 따라가기 화면으로 넘어간다(R12-1). */
+    private fun respondFollow(accept: Boolean) {
+        val link = me.follow ?: return
+        me.respond(if (accept) FollowEvent.ACCEPT else FollowEvent.DECLINE)
+        log("따라가기 응답 ${link.friendId} ${if (accept) "수락" else "거절"}")
+        if (me.follow?.state == FollowState.ACTIVE) {
+            follower.start(names[link.friendId] ?: link.friendId)
+            screen.value = Screen.FOLLOW
+            startFollowTicker()
+        }
+        refresh()
+    }
+
+    private fun moveLeader(meters: Double) {
+        follower.moveLeader(meters)
+        log("앞차 ${meters.toInt()}m 이동 → 다시 요청 ${follower.rerouteCount}번")
+        refresh()
+    }
+
+    /** R3-3, R12-4 [끊기]: ENDED로 바꾸고 내비 경로를 취소한 뒤 홈으로. 주행 중에도 된다. 그룹은 남는다. */
+    private fun stopFollow() {
+        log("따라가기 끊기")
+        me.cancelFollow()
+        follower.stop()
+        followTicker?.cancel()
+        followTicker = null
+        screen.value = Screen.HOME
+        refresh()
+    }
+
+    /** R12-4: 따라가기 화면이 열려 있는 동안 내 위치를 2초마다 묻고, 경과 시간 표시를 1초마다 갱신한다. */
+    private fun startFollowTicker() {
+        followTicker?.cancel()
+        var tick = 0
+        fun loop() {
+            if (!follower.active || screen.value != Screen.FOLLOW) { followTicker = null; return }
+            if (tick % 2 == 0) navi.requestLocation()
+            tick++
+            refresh()
+            followTicker = scheduler.schedule(1_000) { loop() }
+        }
+        loop()
     }
 
     // ---- 가족(R9) ----
@@ -363,6 +451,11 @@ class MainActivity : ComponentActivity() {
                 "decline" -> respondInvite(false)
                 "start" -> startDestination()
                 "disband" -> disband()
+                "lead" -> requestFollow(arg!!)
+                "laccept" -> respondFollow(true)
+                "ldecline" -> respondFollow(false)
+                "move" -> moveLeader(arg!!.toDouble())
+                "unfollow" -> stopFollow()
                 "family" -> designateFamily(arg!!)
                 "faccept" -> respondFamily(true)
                 "fdecline" -> respondFamily(false)
@@ -391,7 +484,20 @@ class MainActivity : ComponentActivity() {
 
     private fun refresh() {
         val d = drive
-        homeModel.value = homeScreenModel(PEOPLE, me.myStatus, roster, driveActive = d != null, gear = gear, family = family)
+        homeModel.value = homeScreenModel(PEOPLE, me.myStatus, roster, driveActive = d != null, gear = gear, family = family, follow = me.follow)
+        followModel.value = if (follower.active) {
+            followScreenModel(
+                leaderName = me.follow?.friendId?.let { names[it] } ?: "",
+                me = myLocation,
+                leader = follower.leader,
+                leaderUpdatedAt = follower.leaderUpdatedAtMillis,
+                now = scheduler.nowMillis(),
+                reroutes = follower.rerouteCount,
+                moved = follower.movedSinceLastRequest,
+                failed = follower.routeFailed,
+            )
+        } else null
+        if (followModel.value == null && screen.value == Screen.FOLLOW) screen.value = Screen.HOME
         groupModel.value = d?.let {
             groupScreenModel(
                 session = it.session,
