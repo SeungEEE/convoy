@@ -221,7 +221,7 @@ private fun DestinationPicker(
     }
 }
 
-/** R11-21: 리더가 내비에서 정한 목적지를 그룹과 함께할지 묻는다. [그룹과 함께 가기]는 R10 "그룹 목적지 변경"의 제한을 받는다. */
+/** R11-21: 리더가 내비에서 정한 목적지를 그룹과 함께할지 묻는다. 두 버튼 모두 R10 "그룹 목적지 변경"의 제한을 받는다(주행 중 잠김). */
 @Composable
 private fun NaviSuggestionCard(d: Destination, enabled: Boolean, onChoose: (Destination) -> Unit, onIgnore: (Destination) -> Unit) {
     Column(
@@ -241,11 +241,12 @@ private fun NaviSuggestionCard(d: Destination, enabled: Boolean, onChoose: (Dest
             ) { Text("그룹과 함께 가기", fontSize = BODY, fontWeight = FontWeight.Bold, color = if (enabled) Accent else Color(0xFFC9D0DA)) }
             Box(
                 Modifier.widthIn(min = 140.dp).heightIn(min = 84.dp)
+                    .background(if (enabled) Color.Transparent else Color(0xFF3B4552), RoundedCornerShape(16.dp))
                     .border(2.dp, Color(0xFF56606D), RoundedCornerShape(16.dp))
                     .clip(RoundedCornerShape(16.dp))
-                    .clickable { onIgnore(d) },
+                    .clickable(enabled = enabled) { onIgnore(d) },
                 contentAlignment = Alignment.Center,
-            ) { Text("무시", fontSize = BODY, fontWeight = FontWeight.Bold, color = Color(0xFFE1E5EB)) }
+            ) { Text("무시", fontSize = BODY, fontWeight = FontWeight.Bold, color = if (enabled) Color(0xFFE1E5EB) else Color(0xFFC9D0DA)) }
         }
     }
 }

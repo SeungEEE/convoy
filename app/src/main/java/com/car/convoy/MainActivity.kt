@@ -185,12 +185,26 @@ class MainActivity : ComponentActivity() {
         queryDestinationSources()
     }
 
+    override fun onPause() {
+        cancelRequeries()
+        super.onPause()
+    }
+
+    /** 화면이 가려지거나 주행이 끝나면 3초·6초 재조회 예약을 취소한다(Codex 리뷰). */
+    private fun cancelRequeries() {
+        requeries.forEach { it.cancel() }
+        requeries = emptyList()
+    }
+
     /** R11-21: 내비 목적지를 묻는다. onDestinationChanged가 오지 않아 화면에 돌아올 때마다 묻는다. */
     private fun queryDestinationSources() {
         if (!naviReady) return
+        // 새 결과가 오기 전에 이전 제안 카드를 누르지 않도록 지운다(Codex 리뷰).
+        naviDestination = null
+        refresh()
         navi.queryDestinationSources()
         // R11-21: 내비에서 목적지를 정한 직후에는 빈 값이 오므로 3초·6초 뒤에 한 번씩 더 묻는다.
-        requeries.forEach { it.cancel() }
+        cancelRequeries()
         requeries = listOf(3_000L, 6_000L).map { delay -> scheduler.schedule(delay) { navi.queryDestinationSources() } }
     }
 
@@ -264,6 +278,7 @@ class MainActivity : ComponentActivity() {
         log("주행 끝내기")
         drive?.close()
         drive = null
+        cancelRequeries()
         driveMembers = emptyList()
         screen.value = Screen.HOME
         refresh()
