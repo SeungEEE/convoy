@@ -56,7 +56,8 @@ class DestinationPickerModelTest {
     }
 
     @Test fun address_not_taken_from_same_name_far_away() {
-        val farSame = here.copy(address = "먼 주소", latitude = 37.50009)
+        // SPEC R11-21: 이름이 같아도 300m 이상 떨어지면 다른 곳이다(37.5 → 37.503은 약 334m).
+        val farSame = here.copy(address = "먼 주소", latitude = 37.503)
         assertEquals("분당구 백현동", model(navi = here, recent = listOf(farSame)).suggestion?.address)
     }
 
