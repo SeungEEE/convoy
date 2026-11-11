@@ -8,6 +8,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -128,9 +131,15 @@ fun HomeScreen(
         // 시안: 위에 가족·함께 출발 카드를 나란히, 아래에 연결된 사람과 시연 패널.
         twoColumns = {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(28.dp)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(28.dp)) {
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(20.dp)) { familyCard() }
-                    Column(Modifier.weight(1.3f)) { departure() }
+                // 시안처럼 위쪽 두 카드의 높이를 맞춘다(키가 큰 쪽에 맞춤).
+                Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(28.dp)) {
+                    Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+                        FamilyCardView(model.familyCard, onReleaseFamily, Modifier.weight(1f))
+                        belowFamily()
+                    }
+                    Column(Modifier.weight(1.3f).fillMaxHeight()) {
+                        DepartureCard(model, avatar, onStartDestination, onResume, onDisband, onFollow, Modifier.weight(1f))
+                    }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(28.dp)) {
                     Column(Modifier.weight(1.6f)) { people() }
@@ -145,9 +154,9 @@ fun HomeScreen(
 }
 
 @Composable
-private fun CardColumn(content: @Composable () -> Unit) {
+private fun CardColumn(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     Column(
-        Modifier.fillMaxWidth().background(Card, CardShape).border(1.dp, Palette.CardLine, CardShape).padding(horizontal = 36.dp, vertical = 32.dp),
+        modifier.fillMaxWidth().background(Card, CardShape).border(1.dp, Palette.CardLine, CardShape).padding(horizontal = 36.dp, vertical = 32.dp),
         verticalArrangement = Arrangement.spacedBy(22.dp),
     ) { content() }
 }
@@ -163,8 +172,8 @@ private fun CardTitle(icon: ConvoyIcon?, iconColor: Color, title: String, tag: S
 
 /** R9-5: 가족 카드(시안). 항상 연결(그룹과 무관). 해제·지정 취소는 주행 중에도 된다(R10). */
 @Composable
-private fun FamilyCardView(card: FamilyCard, onRelease: () -> Unit) {
-    CardColumn {
+private fun FamilyCardView(card: FamilyCard, onRelease: () -> Unit, modifier: Modifier = Modifier) {
+    CardColumn(modifier) {
         CardTitle(ConvoyIcon.Shield, Palette.FamilyText, "가족", "항상 연결", Palette.FamilyText)
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(22.dp)) {
             if (card.name != null) {
@@ -231,9 +240,10 @@ private fun DepartureCard(
     onResume: () -> Unit,
     onDisband: () -> Unit,
     onFollow: (String) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     var choosing by remember { mutableStateOf(false) }
-    CardColumn {
+    CardColumn(modifier) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             CardTitle(ConvoyIcon.Group, Accent, "함께 출발", "이번 주행 그룹", Accent)
             Spacer(Modifier.weight(1f))
