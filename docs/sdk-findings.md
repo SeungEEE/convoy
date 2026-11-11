@@ -156,3 +156,13 @@
 | 주행 중 | CarUxRestrictions로 제한 상태를 확인해 기능을 줄이거나 막는다. 동영상, 움직이는 이미지, 자동 스크롤 금지. 드롭다운·다단 메뉴 남용 금지 |
 | 주간·야간 | "조명 환경에 따라 UI 밝기와 대비를 자동 조정"이라고만 적혀 있다. 필수라는 표현은 없고, 앱이 밤을 알아내는 방법(Android uiMode, Pleos API 등)도 가이드에 없다 |
 | 확인 못 함 | 버튼 크기·모서리, 색 값, 글자 역할별 크기, 탭·팝업 치수, 상태 바·GNB 높이, 앱 창 dp 크기. 모두 이미지로만 제공된다 |
+
+## 목적지 출처 시험 (2026-11-11, `spike/navi-destinations`, Pleos Emulator 2.1.0)
+NaviHelper 3.0.5 AAR을 javap로 확인한 API(`getBookmarkInfo`, `getRecentDestinationInfo`, `getDestinationInfo`, `onDestinationChanged`)를 에뮬레이터에서 불러 봤다. 시험 코드는 머지하지 않는다.
+| 확인 | 결과 |
+|---|---|
+| 최근 목적지 | `onRecentDestinationInfo`로 목록이 왔다. Convoy가 요청한 곳(강남역)과 **내비에서 직접 검색해 정한 곳(현대백화점 판교점)**이 최근 순으로 들어 있고, 이름·전체 주소·좌표·POI ID가 있다 |
+| 현재 내비 목적지 | `getDestinationInfo()`를 부르면 `onDestinationInfo`로 이름, 좌표, 남은 거리(m)·시간(초)이 왔다. 주소는 "분당구 백현동"처럼 짧게 왔다. 안내 중이 아니면 이름이 빈 값이다 |
+| 목적지 변경 알림 | `onDestinationChanged`는 Convoy가 `requestRoute`했을 때도, 내비 화면에서 검색해 목적지를 바꿨을 때도 오지 않았다. 내비에서 바꿨을 때는 `onRouteStarted`도 오지 않았다. 그래서 Convoy 화면으로 돌아올 때 물어보는 방식으로 한다(R11-21) |
+| 즐겨찾기 | `onBookmarkInfo`로 집(`HOME`)·회사(`OFFICE`) 두 칸이 왔지만 이름이 비고 좌표가 0,0이었다(등록된 곳 없음) |
+| 내비 검색 | 내비 화면의 검색으로 "판교"를 찾아 [목적지로]를 누르면 바로 안내가 바뀐다. 목적지/경유지를 묻는 창이 뜬다 |
