@@ -22,7 +22,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
@@ -37,21 +36,14 @@ import com.car.convoy.domain.UserStatus
 // 그룹 주행 화면과 같은 기준: 버튼 높이 80dp 이상, 글자 28sp 이상(R11-20).
 private val SMALL = 28.sp
 private val BODY = 30.sp
-private val Page = Color(0xFFF2F4F7)
-private val Card = Color.White
-private val Ink = Color(0xFF16202E)
-private val Soft = Color(0xFF5E6978)
-private val Accent = Color(0xFF1F4E8C)
-private val Danger = Color(0xFFB3261E)
-private val Demo = Color(0xFFB7791F)
+private val Card = Palette.Card
+private val Ink = Palette.Ink
+private val Soft = Palette.Soft
+private val Accent = Palette.Accent
+private val Danger = Palette.Danger
+private val Demo = Palette.Demo
 private val CardShape = RoundedCornerShape(16.dp)
-
-/** SPEC R2-5: 활동 중 초록, 업무 중 빨강. 오프라인(내 상태 버튼에만 나옴)은 회색. */
-private fun statusColor(status: UserStatus): Color = when (status) {
-    UserStatus.ACTIVE -> Color(0xFF1D7A46)
-    UserStatus.BUSY -> Danger
-    UserStatus.OFFLINE -> Color(0xFF7D8796)
-}
+private fun statusColor(status: UserStatus): Color = userStatusColor(status)
 
 /** SPEC R2-5, 작업 22: 친구 목록 화면. [model]만 그리고, 누름은 콜백으로 넘긴다. */
 @Composable
@@ -63,30 +55,37 @@ fun FriendScreen(
     onDemoAccept: () -> Unit,
     onDemoDecline: () -> Unit,
     headerExtra: @Composable () -> Unit = {},
+    tabs: @Composable () -> Unit = {},
 ) {
-    Column(
-        modifier = Modifier.fillMaxSize().background(Page).padding(horizontal = 36.dp, vertical = 28.dp),
-        verticalArrangement = Arrangement.spacedBy(24.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-            Text("Convoy", fontSize = 40.sp, fontWeight = FontWeight.Bold, color = Accent)
-            Text("친구", fontSize = 34.sp, fontWeight = FontWeight.Bold, color = Ink)
-            Spacer(Modifier.weight(1f))
-            headerExtra()
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(28.dp)) {
-            Column(Modifier.weight(1.2f), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                if (model.rows.isEmpty()) {
-                    Text("지금 볼 수 있는 친구가 없어요", fontSize = BODY, color = Soft)
+    val empty: @Composable () -> Unit = {
+        if (model.rows.isEmpty()) Text("지금 볼 수 있는 친구가 없어요", fontSize = BODY, color = Soft)
+    }
+    ScreenFrame(
+        header = { single ->
+            HeaderRows(single, lead = { tabs() }, trail = { Spacer(Modifier.weight(1f)); headerExtra() })
+        },
+        // SPEC R2-5: 1열이면 주행 중에도 하는 조작(진행 중 친구 줄, 시연 패널, 내 상태)을 먼저 둔다.
+        singleColumn = {
+            friendSingleColumnOrder(model).forEach { slot ->
+                when (slot) {
+                    is FriendSlot.FriendItem -> FriendCard(slot.row, onRequestFollow, onCancelFollow)
+                    FriendSlot.DemoPanel -> model.pendingRequest?.let { DemoFollowPanel(it, onDemoAccept, onDemoDecline) }
+                    FriendSlot.MyStatus -> MyStatusCard(model.myStatus, onMyStatus)
                 }
+            }
+            empty()
+        },
+        twoColumns = {
+            Column(Modifier.weight(1.2f), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                empty()
                 model.rows.forEach { FriendCard(it, onRequestFollow, onCancelFollow) }
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 MyStatusCard(model.myStatus, onMyStatus)
                 model.pendingRequest?.let { DemoFollowPanel(it, onDemoAccept, onDemoDecline) }
             }
-        }
-    }
+        },
+    )
 }
 
 @Composable
@@ -115,17 +114,17 @@ private fun FriendCard(row: FriendRow, onRequest: (String) -> Unit, onCancel: ()
 
 @Composable
 private fun RequestButton(enabled: Boolean, onClick: () -> Unit) {
-    // 그룹 화면 목적지 버튼과 같은 순서: alpha → background(shape) → border → clip → clickable.
+    // 그룹 화면 목적지 버튼과 같은 순서: background(shape) → border → clip → clickable.
+    // 비활성은 투명도 대신 회색 바탕과 보조 글자색으로 표시한다(글자 대비 유지).
     Box(
         Modifier.widthIn(min = 260.dp).heightIn(min = 88.dp)
-            .alpha(if (enabled) 1f else 0.45f)
-            .background(Color(0xFFE9EFF8), RoundedCornerShape(12.dp))
-            .border(2.dp, Color(0xFFC5D3E8), RoundedCornerShape(12.dp))
+            .background(if (enabled) Palette.ButtonFill else Palette.DisabledFill, RoundedCornerShape(12.dp))
+            .border(2.dp, if (enabled) Palette.ButtonLine else Palette.DisabledFill, RoundedCornerShape(12.dp))
             .clip(RoundedCornerShape(12.dp))
             .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = 24.dp),
         contentAlignment = Alignment.Center,
-    ) { Text("따라가기 요청", fontSize = BODY, fontWeight = FontWeight.Bold, color = Accent) }
+    ) { Text("따라가기 요청", fontSize = BODY, fontWeight = FontWeight.Bold, color = if (enabled) Accent else Soft) }
 }
 
 @Composable
@@ -202,19 +201,16 @@ private fun DemoButton(label: String, onClick: () -> Unit) {
     ) { Text(label, fontSize = BODY, color = Demo) }
 }
 
-/** SPEC R2-5: 화면 위 [친구] [그룹 주행] 탭. */
+/** SPEC R2-5: [친구] [그룹 주행] 탭. 각 화면 머리줄의 "Convoy" 옆에 놓는다(Pleos 가이드 Tabs의 Box 형). */
 @Composable
-fun AppTabBar(selected: AppTab, onSelect: (AppTab) -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().background(Page).padding(start = 36.dp, end = 36.dp, top = 20.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
+fun AppTabs(selected: AppTab, onSelect: (AppTab) -> Unit) {
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         AppTab.entries.forEach { tab ->
             val on = tab == selected
             Box(
-                Modifier.widthIn(min = 240.dp).heightIn(min = 80.dp)
+                Modifier.widthIn(min = 200.dp).heightIn(min = 80.dp)
                     .background(if (on) Accent else Card, RoundedCornerShape(12.dp))
-                    .border(2.dp, if (on) Accent else Color(0xFFC5D3E8), RoundedCornerShape(12.dp))
+                    .border(2.dp, if (on) Accent else Palette.ButtonLine, RoundedCornerShape(12.dp))
                     .clip(RoundedCornerShape(12.dp))
                     .clickable { onSelect(tab) }
                     .padding(horizontal = 28.dp),

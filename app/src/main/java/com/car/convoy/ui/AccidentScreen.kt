@@ -29,11 +29,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-private val Danger = Color(0xFFB3261E)
-private val DangerSoft = Color(0xFFFBE9E7)
-private val Ink = Color(0xFF16202E)
-private val Soft = Color(0xFF5E6978)
-private val Demo = Color(0xFFB7791F)
+private val Danger = Palette.Danger
+private val DangerSoft = Palette.DangerSoft
+private val Ink = Palette.Ink
+private val Soft = Palette.Soft
+private val Demo = Palette.Demo
 
 /**
  * SPEC R8-1~5, 작업 21: "괜찮으세요?" 확인. 그룹 화면 위에 덮고 뒤의 누름은 막는다.
@@ -63,7 +63,7 @@ fun AccidentPrompt(model: AccidentScreenModel, onOk: () -> Unit) {
                 onClick = onOk,
                 modifier = Modifier.fillMaxWidth().heightIn(min = 140.dp),
                 shape = RoundedCornerShape(20.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1D7A46)),
+                colors = ButtonDefaults.buttonColors(containerColor = Palette.Done),
             ) { Text("괜찮아요", fontSize = 52.sp, fontWeight = FontWeight.Bold) }
         }
     }

@@ -6,8 +6,8 @@ import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import com.car.convoy.data.AccidentController
 import com.car.convoy.data.FriendController
@@ -26,7 +26,7 @@ import com.car.convoy.domain.UserStatus
 import com.car.convoy.ui.AccidentPrompt
 import com.car.convoy.ui.AccidentScreenModel
 import com.car.convoy.ui.AppTab
-import com.car.convoy.ui.AppTabBar
+import com.car.convoy.ui.AppTabs
 import com.car.convoy.ui.FamilyChip
 import com.car.convoy.ui.FriendScreen
 import com.car.convoy.ui.FriendScreenModel
@@ -112,34 +112,34 @@ class MainActivity : ComponentActivity() {
             MaterialTheme {
                 val accidentUi = accidentModel.value
                 Box {
-                    Column {
-                        AppTabBar(tab.value) { tab.value = it }
-                        when (tab.value) {
-                            AppTab.GROUP -> model.value?.let {
-                                GroupScreen(
-                                    model = it,
-                                    onChooseDestination = ::chooseDestination,
-                                    onRetry = { controller.retryMyRoute(); refresh() },
-                                    onDemoDepart = { id -> controller.server.depart(id); refresh() },
-                                    onDemoArrive = { id -> controller.server.arrive(id); refresh() },
-                                    headerExtra = { accidentUi?.let { a -> FamilyChip(a.familyLabel) } },
-                                    belowMembers = { accidentUi?.sentCard?.let { c -> SentFamilyCard(c) } },
-                                )
-                            }
-                            AppTab.FRIENDS -> friendModel.value?.let {
-                                FriendScreen(
-                                    model = it,
-                                    onMyStatus = { s -> friends.setMyStatus(s); refresh() },
-                                    onRequestFollow = ::requestFollow,
-                                    onCancelFollow = { friends.cancelFollow(); refresh() },
-                                    onDemoAccept = { friends.respond(FollowEvent.ACCEPT); refresh() },
-                                    onDemoDecline = { friends.respond(FollowEvent.DECLINE); refresh() },
-                                    headerExtra = { accidentUi?.let { a -> FamilyChip(a.familyLabel) } },
-                                )
-                            }
+                    val tabs: @Composable () -> Unit = { AppTabs(tab.value) { tab.value = it } }
+                    when (tab.value) {
+                        AppTab.GROUP -> model.value?.let {
+                            GroupScreen(
+                                model = it,
+                                onChooseDestination = ::chooseDestination,
+                                onRetry = { controller.retryMyRoute(); refresh() },
+                                onDemoDepart = { id -> controller.server.depart(id); refresh() },
+                                onDemoArrive = { id -> controller.server.arrive(id); refresh() },
+                                headerExtra = { accidentUi?.let { a -> FamilyChip(a.familyLabel) } },
+                                belowMembers = { accidentUi?.sentCard?.let { c -> SentFamilyCard(c) } },
+                                tabs = tabs,
+                            )
+                        }
+                        AppTab.FRIENDS -> friendModel.value?.let {
+                            FriendScreen(
+                                model = it,
+                                onMyStatus = { s -> friends.setMyStatus(s); refresh() },
+                                onRequestFollow = ::requestFollow,
+                                onCancelFollow = { friends.cancelFollow(); refresh() },
+                                onDemoAccept = { friends.respond(FollowEvent.ACCEPT); refresh() },
+                                onDemoDecline = { friends.respond(FollowEvent.DECLINE); refresh() },
+                                headerExtra = { accidentUi?.let { a -> FamilyChip(a.familyLabel) } },
+                                tabs = tabs,
+                            )
                         }
                     }
-                    // 작업 21: 사고 확인 중이면 어느 탭 위에도 "괜찮으세요?"를 덮는다(R2-5).
+                    // 탭은 각 화면 머리줄에 놓는다(R2-5). 작업 21: 사고 확인 중이면 어느 탭 위에도 "괜찮으세요?"를 덮는다(R2-5).
                     if (accidentUi?.showPrompt == true) AccidentPrompt(accidentUi) { accident.respondOk() }
                 }
             }
