@@ -16,6 +16,12 @@ data class Destination(
 
 private const val EARTH_RADIUS_METERS = 6_371_000.0
 
+/**
+ * SPEC R12-3: 북쪽(위도 증가)으로 [meters]만큼 옮긴다. 자오선을 따라 움직이므로 하버사인 거리(R11-13)로 재도 [meters]다.
+ */
+fun moveNorth(from: Destination, meters: Double): Destination =
+    from.copy(latitude = from.latitude + Math.toDegrees(meters / EARTH_RADIUS_METERS))
+
 /** SPEC R11-13: 두 좌표 사이의 하버사인 거리(m). */
 fun distanceMeters(a: Destination, b: Destination): Double {
     val lat1 = Math.toRadians(a.latitude)

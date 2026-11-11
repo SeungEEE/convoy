@@ -6,8 +6,12 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -19,6 +23,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -28,11 +36,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.car.convoy.domain.UserStatus
 
-// 차량 화면 기준: 버튼 높이 80dp 이상, 글자 28sp 이상(R11-20). 시안: Convoy 그룹 흐름 시안(홈).
+// 차량 화면 기준: 버튼 높이 80dp 이상, 글자 28sp 이상(R11-20). 시안: Convoy 그룹 흐름 시안(1. 홈).
 private val SMALL = 28.sp
 private val BODY = 30.sp
 private val TITLE = 34.sp
@@ -41,10 +50,10 @@ private val Ink = Palette.Ink
 private val Soft = Palette.Soft
 private val Accent = Palette.Accent
 private val Demo = Palette.Demo
-private val CardShape = RoundedCornerShape(28.dp)
-private val ButtonShape = RoundedCornerShape(18.dp)
+private val CardShape = RoundedCornerShape(32.dp)
+private val ButtonShape = RoundedCornerShape(20.dp)
 
-/** SPEC R2-5, R4-5, 작업 23: 홈. [model]만 그리고, 누름은 콜백으로 넘긴다. 가족 카드는 작업 24에서 붙는다. */
+/** SPEC R2-5, R4-5, R9-5: 홈(시안). [model]만 그리고, 누름은 콜백으로 넘긴다. */
 @Composable
 fun HomeScreen(
     model: HomeScreenModel,
@@ -59,17 +68,32 @@ fun HomeScreen(
     onReleaseFamily: () -> Unit = {},
     onDemoFamilyAccept: () -> Unit = {},
     onDemoFamilyDecline: () -> Unit = {},
+    onFollow: (String) -> Unit = {},
+    onDemoFollowAccept: () -> Unit = {},
+    onDemoFollowDecline: () -> Unit = {},
     headerExtra: @Composable () -> Unit = {},
     belowFamily: @Composable () -> Unit = {},
 ) {
+    // 사람마다 같은 아바타 색을 쓴다(연결된 사람과 함께 출발 칩).
+    val avatar: (String) -> Pair<Color, Color> = { id ->
+        val i = model.people.indexOfFirst { it.id == id }.coerceAtLeast(0)
+        Palette.AvatarColors[i % Palette.AvatarColors.size]
+    }
     // R8-10: 사고 알림 카드는 가족 카드 바로 아래에 붙는다(가족은 그룹 주행과 무관, R9-1).
     val familyCard: @Composable () -> Unit = { FamilyCardView(model.familyCard, onReleaseFamily); belowFamily() }
-    val departure: @Composable () -> Unit = { DepartureCard(model, onStartDestination, onResume, onDisband) }
+    val departure: @Composable () -> Unit = { DepartureCard(model, avatar, onStartDestination, onResume, onDisband, onFollow) }
     val demo: @Composable () -> Unit = {
         model.pendingFamily?.let { DemoPanel("${it.name}님이 가족 요청을 받았어요", onDemoFamilyAccept, onDemoFamilyDecline) }
         model.pendingInvite?.let { DemoPanel("${it.name}님이 그룹 초대를 받았어요", onDemoAccept, onDemoDecline) }
+        model.pendingFollow?.let { DemoPanel("${it.name}님이 따라가기 요청을 받았어요", onDemoFollowAccept, onDemoFollowDecline) }
     }
-    val people: @Composable () -> Unit = { PeopleCard(model, onInvite, onDesignateFamily) }
+    val people: @Composable () -> Unit = { PeopleCard(model, avatar, onInvite, onDesignateFamily) }
+    val note: @Composable () -> Unit = {
+        Text(
+            "가족은 항상 연결되고, 그룹은 함께 이동할 때만 꾸려요. 설정은 정차 중에만 돼요.",
+            fontSize = SMALL, color = Soft, lineHeight = 40.sp, modifier = Modifier.padding(horizontal = 6.dp),
+        )
+    }
     ScreenFrame(
         header = { single ->
             HeaderRows(
@@ -78,6 +102,7 @@ fun HomeScreen(
                 trail = {
                     Spacer(Modifier.weight(1f))
                     headerExtra()
+                    Text("내 상태", fontSize = SMALL, color = Soft)
                     MyStatusSegment(model.myStatus, onMyStatus)
                 },
             )
@@ -92,48 +117,73 @@ fun HomeScreen(
                     HomeSlot.PEOPLE -> people()
                 }
             }
+            note()
         },
+        // 시안: 위에 가족·함께 출발 카드를 나란히, 아래에 연결된 사람과 시연 패널.
         twoColumns = {
-            Column(Modifier.weight(1.5f), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-                departure()
-                people()
-            }
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-                familyCard()
-                demo()
-                Text(
-                    "가족은 항상 연결되고, 그룹은 함께 이동할 때만 꾸려요. 설정은 정차 중에만 돼요.",
-                    fontSize = SMALL, color = Soft, lineHeight = 40.sp, modifier = Modifier.padding(horizontal = 6.dp),
-                )
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(28.dp)) {
+                // 시안처럼 위쪽 두 카드의 높이를 맞춘다(키가 큰 쪽에 맞춤).
+                Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(28.dp)) {
+                    Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+                        FamilyCardView(model.familyCard, onReleaseFamily, Modifier.weight(1f))
+                        belowFamily()
+                    }
+                    Column(Modifier.weight(1.3f).fillMaxHeight()) {
+                        DepartureCard(model, avatar, onStartDestination, onResume, onDisband, onFollow, Modifier.weight(1f))
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(28.dp)) {
+                    Column(Modifier.weight(1.6f)) { people() }
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+                        demo()
+                        note()
+                    }
+                }
             }
         },
     )
 }
 
-/** R9-5: 가족 카드. 항상 연결(그룹과 무관). 해제·지정 취소는 주행 중에도 된다(R10). */
 @Composable
-private fun FamilyCardView(card: FamilyCard, onRelease: () -> Unit) {
-    val green = Color(0xFF0F5A36)
+private fun CardColumn(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     Column(
-        Modifier.fillMaxWidth().background(Card, CardShape).border(1.dp, Color(0xFFE3E6EA), CardShape).padding(28.dp),
-        verticalArrangement = Arrangement.spacedBy(18.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            Text("가족", fontSize = TITLE, fontWeight = FontWeight.ExtraBold, color = Ink)
-            Chip("항상 연결", green, SMALL)
-        }
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+        modifier.fillMaxWidth().background(Card, CardShape).border(1.dp, Palette.CardLine, CardShape).padding(horizontal = 36.dp, vertical = 32.dp),
+        verticalArrangement = Arrangement.spacedBy(22.dp),
+    ) { content() }
+}
+
+@Composable
+private fun CardTitle(icon: ConvoyIcon?, iconColor: Color, title: String, tag: String, tagColor: Color) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        if (icon != null) Icon24(icon, iconColor, 34.dp, 2.2f)
+        Text(title, fontSize = TITLE, fontWeight = FontWeight.ExtraBold, color = Ink)
+        Chip(tag, tagColor, SMALL)
+    }
+}
+
+/** R9-5: 가족 카드(시안). 항상 연결(그룹과 무관). 해제·지정 취소는 주행 중에도 된다(R10). */
+@Composable
+private fun FamilyCardView(card: FamilyCard, onRelease: () -> Unit, modifier: Modifier = Modifier) {
+    CardColumn(modifier) {
+        CardTitle(ConvoyIcon.Shield, Palette.FamilyText, "가족", "항상 연결", Palette.FamilyText)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(22.dp)) {
             if (card.name != null) {
-                Box(Modifier.size(80.dp).background(Color(0xFFE3F4EA), CircleShape), contentAlignment = Alignment.Center) {
-                    Text(card.name.take(1), fontSize = TITLE, fontWeight = FontWeight.ExtraBold, color = green)
+                Box(Modifier.size(96.dp).background(Palette.FamilyFill, CircleShape), contentAlignment = Alignment.Center) {
+                    Text(card.name.take(1), fontSize = 38.sp, fontWeight = FontWeight.ExtraBold, color = Palette.FamilyText)
+                }
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(card.name, fontSize = 40.sp, fontWeight = FontWeight.ExtraBold, color = Ink)
+                    Text(card.message, fontSize = SMALL, color = Soft)
+                }
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(card.message, fontSize = BODY, fontWeight = FontWeight.Bold, color = Ink)
+                    Text("연결된 사람에서 [가족으로 설정]을 눌러요", fontSize = SMALL, color = Soft)
                 }
             }
-            Text(card.message, fontSize = BODY, fontWeight = if (card.name != null) FontWeight.Bold else FontWeight.Normal,
-                color = if (card.name != null) Ink else Soft, modifier = Modifier.weight(1f))
         }
         if (card.showRelease) SoftButton("가족 해제", enabled = true, onClick = onRelease)
         if (card.showCancel) SoftButton("지정 취소", enabled = true, onClick = onRelease)
-        if (card.state == FamilyCardState.NONE) Text("아래 연결된 사람에서 [가족으로 설정]을 눌러요", fontSize = SMALL, color = Soft)
     }
 }
 
@@ -151,7 +201,7 @@ private fun MyStatusSegment(current: UserStatus, onChoose: (UserStatus) -> Unit)
                     .background(if (on) Card else Color.Transparent, RoundedCornerShape(999.dp))
                     .clip(RoundedCornerShape(999.dp))
                     .clickable { onChoose(s) }
-                    .padding(horizontal = 28.dp),
+                    .padding(horizontal = 30.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
@@ -162,66 +212,109 @@ private fun MyStatusSegment(current: UserStatus, onChoose: (UserStatus) -> Unit)
     }
 }
 
+/**
+ * R4-5, R12-1: 함께 출발(시안). 멤버 칩과 [목적지로 함께]·[앞차 따라가기] 두 버튼.
+ * [앞차 따라가기]를 누르면 따라갈 멤버 버튼이 펼쳐진다(업무 중이면 잠김). 진행 중이면 [진행 중인 주행으로].
+ */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun SectionTitle(title: String, tag: String? = null, trailing: @Composable RowScope.() -> Unit = {}) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-        Text(title, fontSize = TITLE, fontWeight = FontWeight.ExtraBold, color = Ink)
-        tag?.let { Chip(it, Accent, SMALL) }
-        trailing()
-    }
-}
-
-/** R4-5 함께 출발: 이번 주행 그룹의 멤버와 출발 버튼. 진행 중이면 [진행 중인 주행으로]. */
-@Composable
-private fun DepartureCard(model: HomeScreenModel, onStart: () -> Unit, onResume: () -> Unit, onDisband: () -> Unit) {
-    Column(
-        Modifier.fillMaxWidth().background(Card, CardShape).border(1.dp, Color(0xFFE3E6EA), CardShape).padding(28.dp),
-        verticalArrangement = Arrangement.spacedBy(20.dp),
-    ) {
-        SectionTitle("함께 출발", "이번 주행 그룹") {
+private fun DepartureCard(
+    model: HomeScreenModel,
+    avatar: (String) -> Pair<Color, Color>,
+    onStart: () -> Unit,
+    onResume: () -> Unit,
+    onDisband: () -> Unit,
+    onFollow: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var choosing by remember { mutableStateOf(false) }
+    CardColumn(modifier) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            CardTitle(ConvoyIcon.Group, Accent, "함께 출발", "이번 주행 그룹", Accent)
             Spacer(Modifier.weight(1f))
-            if (model.departure.size > 1) {
-                SoftButton("그룹 해산", enabled = model.canDisband, onClick = onDisband)
-            }
+            if (model.departure.size > 1) SoftButton("그룹 해산", enabled = model.canDisband, onClick = onDisband)
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            model.departure.forEach { MemberChip(it) }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            model.departure.forEach { MemberChip(it, avatar(it.id)) }
         }
-        if (model.departure.size == 1) {
-            Text("아래 연결된 사람을 초대해 그룹을 꾸려요", fontSize = SMALL, color = Soft)
-        }
-        if (model.showResume) {
-            PrimaryAction("진행 중인 주행으로", "목적지로 함께 가는 중이에요", enabled = true, onClick = onResume)
-        } else {
-            PrimaryAction("목적지로 함께", "모두의 내비가 함께 바뀌어요", enabled = model.canStartDestination, onClick = onStart)
-            if (!model.canStartDestination && model.departure.any { !it.isLeader && !it.pending }) {
-                Text("정차 중에만 출발할 수 있어요", fontSize = SMALL, color = Soft)
+        if (model.departure.size == 1) Text("아래 연결된 사람을 초대해 그룹을 꾸려요", fontSize = SMALL, color = Soft)
+        when {
+            model.showResume -> BigAction(ConvoyIcon.Pin, "진행 중인 주행으로", model.resumeLabel, Palette.Brand, Palette.OnBrandSoft, true, Modifier.fillMaxWidth(), onResume)
+            // R12-1: 따라가기 요청을 보내고 수락을 기다리는 중.
+            model.followWaiting != null -> Box(
+                Modifier.fillMaxWidth().heightIn(min = 112.dp).background(Palette.PendingFill, ButtonShape).padding(horizontal = 28.dp),
+                contentAlignment = Alignment.CenterStart,
+            ) { Text(model.followWaiting, fontSize = BODY, fontWeight = FontWeight.Bold, color = Palette.PendingText) }
+            else -> {
+                val canFollowSomeone = model.followChoices.any { it.canFollow }
+                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    BigAction(ConvoyIcon.Pin, "목적지로 함께", "모두의 내비가 함께 바뀌어요", Palette.Brand, Palette.OnBrandSoft,
+                        model.canStartDestination, Modifier.weight(1f), onStart)
+                    BigAction(ConvoyIcon.Link, "앞차 따라가기", "목적지 없이 멤버를 따라가요", Palette.Night, Palette.OnNightSoft,
+                        canFollowSomeone, Modifier.weight(1f)) { choosing = !choosing }
+                }
+                if (choosing && canFollowSomeone) {
+                    Text("누구를 따라갈까요?", fontSize = SMALL, fontWeight = FontWeight.Bold, color = Ink)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        model.followChoices.forEach { c ->
+                            OutlineButton("${c.name} 따라가기", enabled = c.canFollow, width = 240.dp) { choosing = false; onFollow(c.id) }
+                        }
+                    }
+                    model.followChoices.firstNotNullOfOrNull { c -> c.note?.let { "${c.name}: $it" } }?.let { Text(it, fontSize = SMALL, color = Soft) }
+                }
+                if (!model.canStartDestination && model.departure.any { !it.isLeader && !it.pending }) {
+                    Text("정차 중에만 출발할 수 있어요", fontSize = SMALL, color = Soft)
+                }
             }
         }
     }
 }
 
+/** 시안의 큰 출발 버튼(아이콘 + 제목 + 설명). 비활성은 회색 바탕과 보조 글자색(대비 유지). */
 @Composable
-private fun MemberChip(chip: DepartureChip) {
+private fun BigAction(
+    icon: ConvoyIcon, title: String, sub: String, bg: Color, subColor: Color, enabled: Boolean, modifier: Modifier, onClick: () -> Unit,
+) {
+    val fg = if (enabled) Color.White else Soft
+    Row(
+        modifier.heightIn(min = 124.dp)
+            .background(if (enabled) bg else Palette.DisabledFill, RoundedCornerShape(26.dp))
+            .clip(RoundedCornerShape(26.dp))
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 28.dp, vertical = 18.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(18.dp),
+    ) {
+        Icon24(icon, fg, 44.dp, 2.2f)
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(title, fontSize = TITLE, fontWeight = FontWeight.ExtraBold, color = fg)
+            Text(sub, fontSize = SMALL, color = if (enabled) subColor else Soft, maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = 36.sp)
+        }
+    }
+}
+
+@Composable
+private fun MemberChip(chip: DepartureChip, colors: Pair<Color, Color>) {
     val shape = RoundedCornerShape(999.dp)
     val base = Modifier.heightIn(min = 64.dp)
     val styled = when {
-        chip.isLeader -> base.background(Color(0xFFE3EAFD), shape)
+        chip.isLeader -> base.background(Palette.MemberFill, shape)
         chip.pending -> base.drawBehind {
             drawRoundRect(
                 color = Color(0xFFB5BDC8), cornerRadius = CornerRadius(size.height / 2),
                 style = Stroke(width = 2.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 8f))),
             )
         }
-        else -> base.background(Color(0xFFF1F3F6), shape)
+        else -> base.background(Palette.ButtonFill, shape)
     }
     Row(
         styled.padding(start = 8.dp, end = 22.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Box(Modifier.size(48.dp).background(Card, CircleShape), contentAlignment = Alignment.Center) {
-            Text(chip.name.take(1), fontSize = SMALL, fontWeight = FontWeight.ExtraBold, color = if (chip.isLeader) Accent else Ink)
+        val (bg, fg) = if (chip.isLeader) Card to Palette.MemberText else if (chip.pending) Palette.ButtonFill to Soft else colors
+        Box(Modifier.size(48.dp).background(bg, CircleShape), contentAlignment = Alignment.Center) {
+            Text(chip.name.take(1), fontSize = SMALL, fontWeight = FontWeight.ExtraBold, color = fg)
         }
         Text(
             when {
@@ -230,67 +323,58 @@ private fun MemberChip(chip: DepartureChip) {
                 else -> chip.name
             },
             fontSize = SMALL, fontWeight = FontWeight.Bold,
-            color = if (chip.isLeader) Accent else if (chip.pending) Soft else Ink,
+            color = if (chip.isLeader) Palette.MemberText else if (chip.pending) Soft else Ink,
         )
     }
 }
 
-/** 큰 출발 버튼. 비활성은 회색 바탕과 보조 글자색(대비 유지, PaletteContrastTest). */
+/** R4-5 연결된 사람(시안): 오프라인은 보이지 않는다(R2-2). 가족은 상태 줄에 "· 가족"으로 붙는다. */
 @Composable
-private fun PrimaryAction(title: String, sub: String, enabled: Boolean, onClick: () -> Unit) {
+private fun PeopleCard(
+    model: HomeScreenModel,
+    avatar: (String) -> Pair<Color, Color>,
+    onInvite: (String) -> Unit,
+    onDesignateFamily: (String) -> Unit,
+) {
     Column(
-        Modifier.fillMaxWidth().heightIn(min = 120.dp)
-            .background(if (enabled) Accent else Palette.DisabledFill, RoundedCornerShape(24.dp))
-            .clip(RoundedCornerShape(24.dp))
-            .clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = 28.dp, vertical = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        Text(title, fontSize = TITLE, fontWeight = FontWeight.ExtraBold, color = if (enabled) Color.White else Soft)
-        Text(sub, fontSize = SMALL, color = if (enabled) Color(0xFFE3EAFD) else Soft)
-    }
-}
-
-/** R4-5 연결된 사람: 오프라인은 보이지 않는다(R2-2). */
-@Composable
-private fun PeopleCard(model: HomeScreenModel, onInvite: (String) -> Unit, onDesignateFamily: (String) -> Unit) {
-    Column(
-        Modifier.fillMaxWidth().background(Card, CardShape).border(1.dp, Color(0xFFE3E6EA), CardShape)
-            .padding(horizontal = 28.dp, vertical = 22.dp),
+        Modifier.fillMaxWidth().background(Card, CardShape).border(1.dp, Palette.CardLine, CardShape)
+            .padding(horizontal = 36.dp, vertical = 28.dp),
     ) {
         Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             Text("연결된 사람", fontSize = TITLE, fontWeight = FontWeight.ExtraBold, color = Ink)
             Text("오프라인인 사람은 보이지 않아요", fontSize = SMALL, color = Soft)
         }
         model.people.forEachIndexed { i, p ->
-            PersonLine(p, onInvite, onDesignateFamily, last = i == model.people.lastIndex)
+            PersonLine(p, avatar(p.id), onInvite, onDesignateFamily, last = i == model.people.lastIndex)
         }
     }
 }
 
 @Composable
-private fun PersonLine(p: PersonRow, onInvite: (String) -> Unit, onDesignateFamily: (String) -> Unit, last: Boolean) {
+private fun PersonLine(
+    p: PersonRow,
+    colors: Pair<Color, Color>,
+    onInvite: (String) -> Unit,
+    onDesignateFamily: (String) -> Unit,
+    last: Boolean,
+) {
     Row(
-        Modifier.fillMaxWidth().padding(vertical = 14.dp),
+        Modifier.fillMaxWidth().padding(vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(18.dp),
     ) {
-        Box(Modifier.size(64.dp).background(userStatusColor(p.status).copy(alpha = 0.14f), CircleShape), contentAlignment = Alignment.Center) {
-            Text(p.name.take(1), fontSize = 28.sp, fontWeight = FontWeight.ExtraBold, color = userStatusColor(p.status))
+        Box(Modifier.size(68.dp).background(colors.first, CircleShape), contentAlignment = Alignment.Center) {
+            Text(p.name.take(1), fontSize = SMALL, fontWeight = FontWeight.ExtraBold, color = colors.second)
         }
         Column(Modifier.weight(1f)) {
             Text(p.name, fontSize = 32.sp, fontWeight = FontWeight.Bold, color = Ink)
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Box(Modifier.size(12.dp).background(userStatusColor(p.status), CircleShape))
-                Text(p.statusLabel, fontSize = SMALL, color = Soft)
+                Box(Modifier.size(14.dp).background(userStatusColor(p.status), CircleShape))
+                Text(listOfNotNull(p.statusLabel, p.familyTag).joinToString(" · "), fontSize = SMALL, color = Soft)
             }
         }
-        // R9-5: 가족 표시. 이 사람이 가족(또는 수락 대기)이면 태그, 아니면 [가족으로 설정].
-        when (p.familyTag) {
-            null -> OutlineButton("가족으로 설정", enabled = p.canDesignateFamily, width = 220.dp) { onDesignateFamily(p.id) }
-            "가족" -> StatusTag(p.familyTag, Palette.FamilyText, Palette.FamilyFill, width = 220.dp)
-            else -> StatusTag(p.familyTag, Palette.PendingText, Palette.PendingFill, width = 220.dp)
-        }
+        // R9-5: 가족(또는 수락 대기)이면 상태 줄에 표시하고, 아니면 [가족으로 설정].
+        if (p.familyTag == null) OutlineButton("가족으로 설정", enabled = p.canDesignateFamily, width = 240.dp) { onDesignateFamily(p.id) }
         when (p.groupLabel) {
             null -> OutlineButton("그룹에 초대", enabled = p.canInvite) { onInvite(p.id) }
             "수락 대기" -> StatusTag(p.groupLabel, Palette.PendingText, Palette.PendingFill)
@@ -301,7 +385,7 @@ private fun PersonLine(p: PersonRow, onInvite: (String) -> Unit, onDesignateFami
 }
 
 @Composable
-private fun StatusTag(label: String, fg: Color, bg: Color, width: androidx.compose.ui.unit.Dp = 240.dp) {
+private fun StatusTag(label: String, fg: Color, bg: Color, width: androidx.compose.ui.unit.Dp = 260.dp) {
     Box(Modifier.width(width).heightIn(min = 80.dp).background(bg, ButtonShape), contentAlignment = Alignment.Center) {
         Text(label, fontSize = SMALL, fontWeight = FontWeight.Bold, color = fg)
     }
@@ -309,7 +393,7 @@ private fun StatusTag(label: String, fg: Color, bg: Color, width: androidx.compo
 
 /** 테두리 버튼. 비활성은 회색 바탕과 보조 글자색. */
 @Composable
-private fun OutlineButton(label: String, enabled: Boolean, width: androidx.compose.ui.unit.Dp = 240.dp, onClick: () -> Unit) {
+private fun OutlineButton(label: String, enabled: Boolean, width: androidx.compose.ui.unit.Dp = 260.dp, onClick: () -> Unit) {
     Box(
         Modifier.width(width).heightIn(min = 80.dp)
             .background(if (enabled) Card else Palette.DisabledFill, ButtonShape)
@@ -324,35 +408,35 @@ private fun OutlineButton(label: String, enabled: Boolean, width: androidx.compo
 private fun SoftButton(label: String, enabled: Boolean, onClick: () -> Unit) {
     Box(
         Modifier.widthIn(min = 180.dp).heightIn(min = 80.dp)
-            .background(if (enabled) Color(0xFFF1F3F6) else Palette.DisabledFill, ButtonShape)
+            .background(if (enabled) Palette.ButtonFill else Palette.DisabledFill, ButtonShape)
             .clip(ButtonShape)
             .clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = 24.dp),
+            .padding(horizontal = 26.dp),
         contentAlignment = Alignment.Center,
     ) { Text(label, fontSize = SMALL, fontWeight = FontWeight.Bold, color = if (enabled) Color(0xFF3B4552) else Soft) }
 }
 
-/** R4-5, R9-5: 가상 인물의 초대·가족 요청 응답. 점선 테두리로 실제 기능과 구분한다. */
+/** R4-5, R9-5, R12-1: 가상 인물의 초대·가족·따라가기 요청 응답(시안). 점선 테두리로 실제 기능과 구분한다. */
 @Composable
 private fun DemoPanel(message: String, onAccept: () -> Unit, onDecline: () -> Unit) {
     Column(
         Modifier.fillMaxWidth()
-            .background(Color(0xFFFFFBF4), RoundedCornerShape(24.dp))
+            .background(Color(0xFFFFFBF4), RoundedCornerShape(28.dp))
             .drawBehind {
                 drawRoundRect(
-                    color = Color(0xFFB98A45), cornerRadius = CornerRadius(24.dp.toPx()),
-                    style = Stroke(width = 2.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(18f, 12f))),
+                    color = Color(0xFFB98A45), cornerRadius = CornerRadius(28.dp.toPx()),
+                    style = Stroke(width = 2.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(14f, 10f))),
                 )
             }
-            .padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+            .padding(28.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             Chip("시연용", Demo, SMALL)
             Text("가상 인물 응답", fontSize = SMALL, color = Color(0xFF3B4552))
         }
         Text(message, fontSize = BODY, fontWeight = FontWeight.Bold, color = Ink)
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             DemoButton("수락", Modifier.weight(1f), onAccept)
             DemoButton("거절", Modifier.weight(1f), onDecline)
         }
@@ -362,28 +446,11 @@ private fun DemoPanel(message: String, onAccept: () -> Unit, onDecline: () -> Un
 @Composable
 private fun DemoButton(label: String, modifier: Modifier, onClick: () -> Unit) {
     Box(
-        modifier.heightIn(min = 80.dp)
+        modifier.heightIn(min = 84.dp)
             .background(Card, ButtonShape)
             .border(2.dp, Color(0xFFB98A45), ButtonShape)
             .clip(ButtonShape)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
-    ) { Text(label, fontSize = SMALL, fontWeight = FontWeight.Bold, color = Demo) }
-}
-
-/** R11-20: 그룹 주행 화면 머리줄의 [홈으로]·[주행 끝내기]. 둘 다 주행 중에도 된다(R10). */
-@Composable
-fun DriveNavButtons(onHome: () -> Unit, onEnd: () -> Unit) {
-    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        SoftButton("홈으로", enabled = true, onClick = onHome)
-        Box(
-            Modifier.widthIn(min = 200.dp).heightIn(min = 80.dp)
-                .background(Card, ButtonShape)
-                .border(2.dp, Color(0xFFE8B4AE), ButtonShape)
-                .clip(ButtonShape)
-                .clickable(onClick = onEnd)
-                .padding(horizontal = 24.dp),
-            contentAlignment = Alignment.Center,
-        ) { Text("주행 끝내기", fontSize = SMALL, fontWeight = FontWeight.Bold, color = Palette.Danger) }
-    }
+    ) { Text(label, fontSize = BODY, fontWeight = FontWeight.Bold, color = Demo) }
 }

@@ -46,7 +46,8 @@ fun destinationPickerModel(
     recent: List<Destination>,
     bookmarks: List<Destination>,
 ): DestinationPickerModel {
-    val usableRecent = recent.filter { it.usable() }
+    // R11-21: 주소가 빈 최근 목적지(앞차 따라가기로 요청한 "<이름> 차" 등)는 보여 주지 않는다.
+    val usableRecent = recent.filter { it.usable() && it.address.isNotBlank() }
     val suggestion = navi?.takeIf { it.usable() }
         ?.takeIf { n -> group == null || !samePlace(n, group) }
         ?.takeIf { n -> ignored == null || !samePlace(n, ignored) }

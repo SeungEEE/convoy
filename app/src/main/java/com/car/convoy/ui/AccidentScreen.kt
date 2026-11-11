@@ -43,7 +43,7 @@ private val Demo = Palette.Demo
 fun AccidentPrompt(model: AccidentScreenModel, onOk: () -> Unit) {
     Box(
         modifier = Modifier.fillMaxSize()
-            .background(Color(0xCC0B0F14))
+            .background(Palette.Night.copy(alpha = 0.80f))
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {},
         contentAlignment = Alignment.Center,
     ) {
@@ -94,5 +94,16 @@ fun SentFamilyCard(card: SentCard, recipient: String? = null) {
 /** SPEC R8-9: 머리에 붙는 가족 표시. */
 @Composable
 fun FamilyChip(label: String) {
-    Chip(label, Demo, 28.sp)
+    // 시안: 가족이 있으면 초록 바탕과 방패, 없으면 회색(R9-5).
+    val has = label != NO_FAMILY
+    val fg = if (has) Palette.FamilyText else Palette.Soft
+    androidx.compose.foundation.layout.Row(
+        Modifier.background(if (has) Palette.FamilyFill else Palette.ButtonFill, RoundedCornerShape(999.dp))
+            .padding(horizontal = 22.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        if (has) Icon24(ConvoyIcon.Shield, fg, 28.dp, 2.2f)
+        Text(label, fontSize = 28.sp, fontWeight = FontWeight.Bold, color = fg)
+    }
 }

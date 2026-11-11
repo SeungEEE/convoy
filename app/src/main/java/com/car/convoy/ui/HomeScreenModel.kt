@@ -5,6 +5,11 @@ import com.car.convoy.data.GroupRoster
 import com.car.convoy.data.RosterState
 import com.car.convoy.domain.DriverAction
 import com.car.convoy.domain.FamilyState
+import com.car.convoy.domain.FollowLink
+import com.car.convoy.domain.FollowRequestResult
+import com.car.convoy.domain.FollowState
+import com.car.convoy.domain.canRequestFollow
+import com.car.convoy.domain.canStartFollowRequest
 import com.car.convoy.domain.Friend
 import com.car.convoy.domain.Gear
 import com.car.convoy.domain.UserStatus
@@ -47,7 +52,18 @@ data class HomeScreenModel(
     val familyHeader: String = NO_FAMILY,
     /** 시연용 패널: 가족 요청을 받은 가상 인물. */
     val pendingFamily: PendingInvite? = null,
+    /** R12-1 [앞차 따라가기]: 수락한 그룹 멤버 중 따라갈 사람. */
+    val followChoices: List<FollowChoice> = emptyList(),
+    /** 따라가기 요청 대기 중이면 "민수님 수락 대기". */
+    val followWaiting: String? = null,
+    /** 시연용 패널: 따라가기 요청을 받은 가상 멤버. */
+    val pendingFollow: PendingInvite? = null,
+    /** [진행 중인 주행으로] 아래 문구. */
+    val resumeLabel: String = "",
 )
+
+/** R12-1: 따라갈 사람 한 명. 업무 중이면 고를 수 없다(R2-3). */
+data class FollowChoice(val id: String, val name: String, val canFollow: Boolean, val note: String?)
 
 enum class FamilyCardState { NONE, PENDING, ACTIVE }
 
@@ -82,7 +98,11 @@ fun homeScreenModel(
     driveActive: Boolean,
     gear: Gear,
     family: FamilyController? = null,
+    follow: FollowLink? = null,
 ): HomeScreenModel {
+    // R4-5, R12-5: 주행은 한 번에 하나다. 따라가기 요청 대기(REQUESTED)도 진행 중으로 본다.
+    val liveFollow = follow?.takeIf { it.state != FollowState.ENDED }
+    val anyDrive = driveActive || liveFollow != null
     val names = people.associate { it.id to it.name }
     val rows = people.filter { visibleInFriendList(it.status) }.map { p ->
         PersonRow(
@@ -95,7 +115,7 @@ fun homeScreenModel(
                 RosterState.MEMBER -> "그룹 멤버"
                 null -> null
             },
-            canInvite = roster.canInviteNow(p.id, gear, driveActive),
+            canInvite = roster.canInviteNow(p.id, gear, anyDrive),
             canDesignateFamily = family?.canDesignate(p.id, gear) ?: false,
             familyTag = family?.takeIf { it.familyId == p.id }?.let {
                 when (it.state) {
@@ -113,14 +133,30 @@ fun homeScreenModel(
         myStatus = myStatus,
         people = rows,
         departure = chips,
-        canStartDestination = !driveActive && roster.members.isNotEmpty() &&
+        canStartDestination = !anyDrive && roster.members.isNotEmpty() &&
             canPerform(DriverAction.SET_GROUP_DESTINATION, gear),
-        showResume = driveActive,
-        canDisband = roster.canDisbandNow(gear, driveActive),
+        showResume = driveActive || liveFollow?.state == FollowState.ACTIVE,
+        canDisband = roster.canDisbandNow(gear, anyDrive),
         pendingInvite = roster.firstPendingInvite?.let { PendingInvite(it, names[it] ?: it) },
         familyCard = familyCard(family),
         familyHeader = familyHeader(family),
         pendingFamily = family?.takeIf { it.state == FamilyState.PENDING }?.familyId?.let { PendingInvite(it, names[it] ?: it) },
+        followChoices = roster.members.map { id ->
+            val person = people.first { it.id == id }
+            FollowChoice(
+                id = id,
+                name = person.name,
+                canFollow = canStartFollowRequest(person.status, gear, followInProgress = anyDrive),
+                note = if (canRequestFollow(person.status) == FollowRequestResult.REJECT_BUSY) "업무 중이라 따라갈 수 없어요" else null,
+            )
+        },
+        followWaiting = liveFollow?.takeIf { it.state == FollowState.REQUESTED }?.let { "${names[it.friendId] ?: it.friendId}님 수락 대기" },
+        pendingFollow = liveFollow?.takeIf { it.state == FollowState.REQUESTED }?.let { PendingInvite(it.friendId, names[it.friendId] ?: it.friendId) },
+        resumeLabel = when {
+            liveFollow?.state == FollowState.ACTIVE -> "${names[liveFollow.friendId] ?: liveFollow.friendId} 차를 따라가는 중이에요"
+            driveActive -> "목적지로 함께 가는 중이에요"
+            else -> ""
+        },
     )
 }
 
@@ -130,7 +166,7 @@ fun homeScreenModel(
  */
 fun homeSingleColumnOrder(model: HomeScreenModel): List<HomeSlot> = buildList {
     add(HomeSlot.DEPARTURE)
-    if (model.pendingInvite != null || model.pendingFamily != null) add(HomeSlot.DEMO)
+    if (model.pendingInvite != null || model.pendingFamily != null || model.pendingFollow != null) add(HomeSlot.DEMO)
     add(HomeSlot.PEOPLE)
 }
 
@@ -139,7 +175,7 @@ fun familyCard(family: FamilyController?): FamilyCard {
     val name = family?.familyName
     return when (family?.state) {
         FamilyState.PENDING -> FamilyCard(FamilyCardState.PENDING, name, "${name}님 수락 대기", showCancel = true, showRelease = false)
-        FamilyState.ACTIVE -> FamilyCard(FamilyCardState.ACTIVE, name, "$name · 사고 알림 받는 중", showCancel = false, showRelease = true)
+        FamilyState.ACTIVE -> FamilyCard(FamilyCardState.ACTIVE, name, "사고가 의심되면 ${name}님에게 알려요", showCancel = false, showRelease = true)
         else -> FamilyCard.NONE
     }
 }
