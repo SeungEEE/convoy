@@ -15,11 +15,17 @@ enum class DriverAction {
 
     /** R10 표의 "따라가기 요청"(R2-5). 설정이라 정차 중에만 한다. */
     REQUEST_FOLLOW,
+
+    /** R10 표의 "주행 끝내기"(R11-20, R11-22). 주행 중에도 된다. */
+    END_DRIVE,
+
+    /** R10 표의 "그룹 해산"(R4-5). 설정이라 정차 중에만 한다. */
+    DISBAND_GROUP,
 }
 
 /**
  * SPEC R10-1: 설정은 정차(PARK) 중에만 한다.
- * 주행 중에는 상태 변경, 초대 수락, 따라가기 수락·끊기, 사고 확인 응답만 가능하다.
+ * 주행 중에는 상태 변경, 초대 수락, 따라가기 수락·끊기, 사고 확인 응답, 주행 끝내기만 가능하다(가족 해제는 작업 24).
  * PARK이 아닌 기어(NEUTRAL, REVERSE, UNKNOWN 포함)는 모두 주행 중으로 본다.
  */
 fun canPerform(action: DriverAction, gear: Gear): Boolean =
@@ -30,4 +36,5 @@ private val ALLOWED_WHILE_DRIVING = setOf(
     DriverAction.ACCEPT_INVITE,
     DriverAction.ACCEPT_OR_END_FOLLOW,
     DriverAction.RESPOND_ACCIDENT_CHECK,
+    DriverAction.END_DRIVE,
 )

@@ -63,7 +63,7 @@ fun GroupScreen(
     onDemoArrive: (String) -> Unit,
     headerExtra: @Composable () -> Unit = {},
     belowMembers: @Composable () -> Unit = {},
-    tabs: @Composable () -> Unit = {},
+    nav: @Composable () -> Unit = {},
 ) {
     val left: @Composable () -> Unit = {
         DestinationCard(model)
@@ -80,7 +80,7 @@ fun GroupScreen(
         header = { single ->
             HeaderRows(
                 single,
-                lead = { tabs() },
+                lead = { nav() },
                 trail = {
                     Chip(model.groupStatusLabel, if (model.finished) Done else Accent, BODY)
                     Spacer(Modifier.weight(1f))
@@ -182,7 +182,7 @@ private fun MemberCard(row: MemberRow) {
         horizontalArrangement = Arrangement.spacedBy(18.dp),
     ) {
         Box(Modifier.size(64.dp).background(color, CircleShape), contentAlignment = Alignment.Center) {
-            Text(if (row.isLeader) "나" else row.name.takeLast(1), fontSize = BODY, fontWeight = FontWeight.Bold, color = Color.White)
+            Text(if (row.isLeader) "나" else row.name.take(1), fontSize = BODY, fontWeight = FontWeight.Bold, color = Color.White)
         }
         Text(row.name, fontSize = 34.sp, fontWeight = FontWeight.Bold, color = Ink)
         if (row.isLeader) Chip("리더", Accent, SMALL)
@@ -260,7 +260,7 @@ private fun DemoPanel(model: GroupScreenModel, onDepart: (String) -> Unit, onArr
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Chip("시연용", Demo, SMALL)
-            Text("가상 일행 조작", fontSize = BODY, fontWeight = FontWeight.Bold, color = Demo)
+            Text("가상 멤버 조작", fontSize = BODY, fontWeight = FontWeight.Bold, color = Demo)
         }
         model.members.filter { it.id in model.demoMemberIds }.forEach { m ->
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
