@@ -25,12 +25,14 @@ class GroupController(
     memberIds: List<String>,
     private val myNavi: NaviPort,
     scheduler: Scheduler,
+    initialGear: Gear = Gear.UNKNOWN,
     private val onUpdate: (GroupUpdate) -> Unit = {},
 ) {
     val server = FakeConvoyServer(myId, myNavi, scheduler, ::apply)
     val session = GroupSession(myId, memberIds, server)
 
-    private var lastGear = Gear.UNKNOWN
+    // 작업 23: 주행마다 새로 만들므로, SDK가 다시 보내 주지 않는 현재 기어를 넘겨받는다.
+    private var lastGear = initialGear
 
     /** 화면이 R10 판단(canPerform)에 쓰는 현재 기어. 처음에는 UNKNOWN이라 주행 중과 같게 취급된다. */
     val currentGear: Gear
