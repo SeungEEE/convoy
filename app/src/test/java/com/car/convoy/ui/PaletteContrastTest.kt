@@ -58,4 +58,12 @@ class PaletteContrastTest {
         check("Done/모두 도착 배너", Palette.Done, Palette.DoneFill)
         check("Danger/사고 원", Palette.Danger, Palette.DangerSoft)
     }
+
+    // Codex 리뷰: 가족 알림 카드(DangerSoft) 안의 시연용 칩, 비활성 버튼 글자.
+    @Test fun demo_chip_on_family_card() = chip("Demo/가족 알림 카드", Palette.Demo, Palette.DangerSoft)
+
+    @Test fun disabled_button_text() {
+        check("비활성 글자/비활성 바탕", Palette.Soft, Palette.DisabledFill)
+        check("비활성 글자/카드", Palette.Soft, Palette.Card)
+    }
 }
