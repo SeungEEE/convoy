@@ -206,7 +206,7 @@ private fun MemberChip(chip: DepartureChip) {
     val shape = RoundedCornerShape(999.dp)
     val base = Modifier.heightIn(min = 64.dp)
     val styled = when {
-        chip.isLeader -> base.background(Color(0xFFE3EAFD), shape)
+        chip.isLeader -> base.background(Palette.MemberFill, shape)
         chip.pending -> base.drawBehind {
             drawRoundRect(
                 color = Color(0xFFB5BDC8), cornerRadius = CornerRadius(size.height / 2),
@@ -247,7 +247,7 @@ private fun PrimaryAction(title: String, sub: String, enabled: Boolean, onClick:
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Text(title, fontSize = TITLE, fontWeight = FontWeight.ExtraBold, color = if (enabled) Color.White else Soft)
-        Text(sub, fontSize = SMALL, color = if (enabled) Color(0xFFE3EAFD) else Soft)
+        Text(sub, fontSize = SMALL, color = if (enabled) Palette.MemberFill else Soft)
     }
 }
 

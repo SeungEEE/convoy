@@ -9,12 +9,18 @@ import com.car.convoy.domain.UserStatus
  * 글자색은 흰 카드, 회색 바탕, 같은 색 12% 칩 위에서 모두 4.5:1 이상이다.
  */
 internal object Palette {
+    /** 아이콘과 앱의 브랜드 색: 네이비 → 블루 → 시안. */
+    val BrandNavy = Color(0xFF071B64)
+    val BrandBlue = Color(0xFF086AB5)
+    val BrandCyan = Color(0xFF17CFE0)
+    val BrandCyanFill = Color(0xFFD7F5F7)
+
     val Page = Color(0xFFF2F4F7)
     val Card = Color.White
-    val Ink = Color(0xFF16202E)
+    val Ink = Color(0xFF10233F)
     /** 보조 글자. 이전 값 #5E6978은 회색 바탕 칩에서 4.3:1이었다. */
-    val Soft = Color(0xFF56606D)
-    val Accent = Color(0xFF1F4E8C)
+    val Soft = Color(0xFF526273)
+    val Accent = BrandBlue
     val Danger = Color(0xFFB3261E)
     val DangerSoft = Color(0xFFFBE9E7)
 
@@ -24,9 +30,9 @@ internal object Palette {
     val Done = Color(0xFF186B3D)
 
     /** "주행 중". 이전 값 #1F6FD1은 칩에서 4.2:1이었다. */
-    val Driving = Color(0xFF1B5FB8)
-    val ButtonFill = Color(0xFFE9EFF8)
-    val ButtonLine = Color(0xFFC5D3E8)
+    val Driving = Color(0xFF006B85)
+    val ButtonFill = Color(0xFFE8F3FC)
+    val ButtonLine = Color(0xFFB9D3E8)
     val DoneFill = Color(0xFFDFF2E6)
     /** 비활성 버튼 바탕. 투명도로 흐리지 않고 이 바탕과 Soft 글자로 표시해 글자 대비를 지킨다. */
     val DisabledFill = Color(0xFFDDE1E7)
@@ -34,8 +40,8 @@ internal object Palette {
     val FamilyFill = Color(0xFFE3F4EA)
     val PendingText = Color(0xFF8A4B00)
     val PendingFill = Color(0xFFFFF1DC)
-    val MemberText = Color(0xFF1A3FA8)
-    val MemberFill = Color(0xFFE3EAFD)
+    val MemberText = BrandBlue
+    val MemberFill = Color(0xFFE5F2FB)
 }
 
 /** R11-20 멤버 상태 색. "출발 전"은 이전 #7D8796(칩 3.2:1) 대신 보조 글자색을 쓴다. */
