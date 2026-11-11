@@ -54,6 +54,9 @@ import com.car.convoy.ui.homeScreenModel
 private const val TAG = "Convoy"
 private const val ME = "me"
 
+/** SPEC R11-21: 현대차 내비 앱 패키지(에뮬레이터). 매니페스트 <queries>에도 적는다. */
+private const val NAVI_APP_PACKAGE = "ai.umos.maps.android.navigation.app"
+
 // 작업 23(R4-5): 외부 서버가 없어 앱에 미리 정해 둔 가상 인물. 서준(오프라인)은 보이지 않는다.
 private val PEOPLE = listOf(
     Friend("p1", "민수", UserStatus.ACTIVE),
@@ -172,6 +175,7 @@ class MainActivity : ComponentActivity() {
                             onDemoArrive = { id -> drive?.server?.arrive(id); refresh() },
                             picker = pickerModel.value ?: destinationPickerModel(null, null, null, emptyList(), emptyList()),
                             onIgnoreSuggestion = { d -> ignoredSuggestion = d; log("내비 목적지 무시 ${d.name}"); refresh() },
+                            onOpenNavi = naviLaunchIntent()?.let { intent -> { openNavi(intent) } },
                             headerExtra = familyChip,
                             belowMembers = { accidentUi?.sentCard?.let { c -> SentFamilyCard(c, sentTo) } },
                             nav = { DriveNavButtons(onHome = ::goHome, onEnd = ::endDrive) },
@@ -314,6 +318,16 @@ class MainActivity : ComponentActivity() {
         driveMembers = emptyList()
         screen.value = Screen.HOME
         refresh()
+    }
+
+    // ---- 내비에서 검색하기(R11-21) ----
+
+    /** 현대차 내비 앱의 실행 인텐트. 에뮬레이터 패키지이고 실차 패키지는 확인이 필요하다. 없으면 null(안내만 보여 준다). */
+    private fun naviLaunchIntent(): Intent? = packageManager.getLaunchIntentForPackage(NAVI_APP_PACKAGE)
+
+    private fun openNavi(intent: Intent) {
+        log("내비에서 검색하기: 내비 앱 띄움")
+        runCatching { startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }.onFailure { log("내비 앱 띄우기 실패: $it") }
     }
 
     // ---- 앞차 따라가기(R12) ----

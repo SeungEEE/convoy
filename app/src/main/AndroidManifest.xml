@@ -10,6 +10,11 @@
     <uses-permission android:name="pleos.car.permission.CAR_SAFETY" />
     <uses-permission android:name="pleos.car.permission.PRIVATE_CAR_SAFETY" />
 
+    <!-- SPEC R11-21: [내비에서 검색하기]로 현대차 내비 앱을 띄우려면 그 패키지를 조회할 수 있어야 한다(Android 11 패키지 가시성). 실차 패키지는 확인 필요 -->
+    <queries>
+        <package android:name="ai.umos.maps.android.navigation.app" />
+    </queries>
+
     <application
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"

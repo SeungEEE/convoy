@@ -6,6 +6,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
@@ -119,7 +121,7 @@ fun HomeScreen(
 private fun FamilyCardView(card: FamilyCard, onRelease: () -> Unit) {
     val green = Color(0xFF0F5A36)
     Column(
-        Modifier.fillMaxWidth().background(Card, CardShape).border(1.dp, Color(0xFFE3E6EA), CardShape).padding(28.dp),
+        Modifier.fillMaxWidth().background(Card, CardShape).border(1.dp, Palette.CardLine, CardShape).padding(28.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -176,10 +178,11 @@ private fun SectionTitle(title: String, tag: String? = null, trailing: @Composab
 }
 
 /** R4-5 함께 출발: 이번 주행 그룹의 멤버와 출발 버튼. 진행 중이면 [진행 중인 주행으로]. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun DepartureCard(model: HomeScreenModel, onStart: () -> Unit, onResume: () -> Unit, onDisband: () -> Unit, onFollow: (String) -> Unit) {
     Column(
-        Modifier.fillMaxWidth().background(Card, CardShape).border(1.dp, Color(0xFFE3E6EA), CardShape).padding(28.dp),
+        Modifier.fillMaxWidth().background(Card, CardShape).border(1.dp, Palette.CardLine, CardShape).padding(28.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
         SectionTitle("함께 출발", "이번 주행 그룹") {
@@ -188,7 +191,8 @@ private fun DepartureCard(model: HomeScreenModel, onStart: () -> Unit, onResume:
                 SoftButton("그룹 해산", enabled = model.canDisband, onClick = onDisband)
             }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+        // 멤버가 많거나 창이 좁으면 다음 줄로 넘어간다(네 명부터 한 줄을 넘었다).
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             model.departure.forEach { MemberChip(it) }
         }
         if (model.departure.size == 1) {
@@ -206,9 +210,9 @@ private fun DepartureCard(model: HomeScreenModel, onStart: () -> Unit, onResume:
                 // R12-1 앞차 따라가기: 수락한 멤버 중 한 명. 업무 중이면 고를 수 없다.
                 if (model.followChoices.isNotEmpty()) {
                     Text("앞차 따라가기 · 목적지 없이 멤버 차를 따라가요", fontSize = SMALL, fontWeight = FontWeight.Bold, color = Ink)
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         model.followChoices.forEach { c ->
-                            OutlineButton("${c.name} 따라가기", enabled = c.canFollow, width = 260.dp) { onFollow(c.id) }
+                            OutlineButton("${c.name} 따라가기", enabled = c.canFollow, width = 240.dp) { onFollow(c.id) }
                         }
                     }
                     model.followChoices.firstNotNullOfOrNull { c -> c.note?.let { "${c.name}: $it" } }?.let {
@@ -277,7 +281,7 @@ private fun PrimaryAction(title: String, sub: String, enabled: Boolean, onClick:
 @Composable
 private fun PeopleCard(model: HomeScreenModel, onInvite: (String) -> Unit, onDesignateFamily: (String) -> Unit) {
     Column(
-        Modifier.fillMaxWidth().background(Card, CardShape).border(1.dp, Color(0xFFE3E6EA), CardShape)
+        Modifier.fillMaxWidth().background(Card, CardShape).border(1.dp, Palette.CardLine, CardShape)
             .padding(horizontal = 28.dp, vertical = 22.dp),
     ) {
         Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(14.dp)) {

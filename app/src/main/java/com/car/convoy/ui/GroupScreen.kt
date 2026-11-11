@@ -67,6 +67,7 @@ fun GroupScreen(
     onDemoArrive: (String) -> Unit,
     picker: DestinationPickerModel = destinationPickerModel(null, null, null, emptyList(), emptyList()),
     onIgnoreSuggestion: (Destination) -> Unit = {},
+    onOpenNavi: (() -> Unit)? = null,
     headerExtra: @Composable () -> Unit = {},
     belowMembers: @Composable () -> Unit = {},
     nav: @Composable () -> Unit = {},
@@ -78,7 +79,7 @@ fun GroupScreen(
         belowMembers()
     }
     val right: @Composable () -> Unit = {
-        DestinationPicker(model, picker, onChooseDestination, onIgnoreSuggestion)
+        DestinationPicker(model, picker, onChooseDestination, onIgnoreSuggestion, onOpenNavi)
         if (model.showRetry) RetryButton(onRetry)
         if (model.demoMemberIds.isNotEmpty()) DemoPanel(model, onDemoDepart, onDemoArrive)
     }
@@ -223,6 +224,7 @@ private fun DestinationPicker(
     picker: DestinationPickerModel,
     onChoose: (Destination) -> Unit,
     onIgnore: (Destination) -> Unit,
+    onOpenNavi: (() -> Unit)?,
 ) {
     val enabled = model.canChooseDestination
     Column(
@@ -232,7 +234,25 @@ private fun DestinationPicker(
         Text("목적지 바꾸기", fontSize = BODY, fontWeight = FontWeight.Bold, color = Ink)
         if (!enabled && !model.finished) Text("정차 중에 리더만 바꿀 수 있어요", fontSize = SMALL, color = Soft)
         picker.suggestion?.let { NaviSuggestionCard(it, enabled, onChoose, onIgnore) }
-        Text("현대차 내비에서 검색해 목적지를 정하고 돌아오면 여기에 떠요", fontSize = SMALL, color = Soft)
+        // R11-21: [내비에서 검색하기]는 현대차 내비 앱을 띄운다(화면 이동이라 R10 제한 없음). 띄울 수 없으면 안내만.
+        if (onOpenNavi != null) {
+            Row(
+                Modifier.fillMaxWidth().heightIn(min = 88.dp)
+                    .background(Card, RoundedCornerShape(16.dp))
+                    .border(2.dp, Palette.ButtonLine, RoundedCornerShape(16.dp))
+                    .clip(RoundedCornerShape(16.dp))
+                    .clickable(onClick = onOpenNavi)
+                    .padding(horizontal = 24.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                Text("⌕", fontSize = 36.sp, fontWeight = FontWeight.Bold, color = Accent)
+                Text("내비에서 검색하기", fontSize = BODY, fontWeight = FontWeight.Bold, color = Accent)
+            }
+            Text("내비에서 목적지를 정하고 돌아오면 여기에 떠요", fontSize = SMALL, color = Soft)
+        } else {
+            Text("현대차 내비에서 검색해 목적지를 정하고 돌아오면 여기에 떠요", fontSize = SMALL, color = Soft)
+        }
         Text(if (picker.usingFallback) "추천 목적지" else "최근 목적지", fontSize = SMALL, fontWeight = FontWeight.Bold, color = Soft)
         picker.recent.forEach { PickLine(it, enabled, onChoose) }
         if (picker.bookmarks.isNotEmpty()) {
@@ -246,28 +266,29 @@ private fun DestinationPicker(
 @Composable
 private fun NaviSuggestionCard(d: Destination, enabled: Boolean, onChoose: (Destination) -> Unit, onIgnore: (Destination) -> Unit) {
     Column(
-        Modifier.fillMaxWidth().background(Palette.Brand, RoundedCornerShape(20.dp)).padding(22.dp),
+        // 시안의 짙은 카드.
+        Modifier.fillMaxWidth().background(Palette.Night, RoundedCornerShape(20.dp)).padding(22.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text("내비에서 정한 목적지", fontSize = SMALL, color = Palette.OnBrandSoft)
+        Text("내비에서 정한 목적지", fontSize = SMALL, color = Palette.OnNightSoft)
         Text(d.name, fontSize = 34.sp, fontWeight = FontWeight.Bold, color = Color.White)
-        Text(d.address, fontSize = SMALL, color = Palette.OnBrandSoft, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(d.address, fontSize = SMALL, color = Palette.OnNightSoft, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Box(
                 Modifier.weight(1f).heightIn(min = 84.dp)
-                    .background(if (enabled) Color.White else Palette.BrandDeep, RoundedCornerShape(16.dp))
+                    .background(if (enabled) Color.White else Palette.NightTile, RoundedCornerShape(16.dp))
                     .clip(RoundedCornerShape(16.dp))
                     .clickable(enabled = enabled) { onChoose(d) },
                 contentAlignment = Alignment.Center,
-            ) { Text("그룹과 함께 가기", fontSize = BODY, fontWeight = FontWeight.Bold, color = if (enabled) Accent else Palette.OnBrandSoft) }
+            ) { Text("그룹과 함께 가기", fontSize = BODY, fontWeight = FontWeight.Bold, color = if (enabled) Palette.MemberText else Palette.OnNightSoft) }
             Box(
                 Modifier.widthIn(min = 140.dp).heightIn(min = 84.dp)
-                    .background(if (enabled) Color.Transparent else Palette.BrandDeep, RoundedCornerShape(16.dp))
-                    .border(2.dp, Palette.OnBrandSoft, RoundedCornerShape(16.dp))
+                    .background(if (enabled) Color.Transparent else Palette.NightTile, RoundedCornerShape(16.dp))
+                    .border(2.dp, Color(0xFF3B4552), RoundedCornerShape(16.dp))
                     .clip(RoundedCornerShape(16.dp))
                     .clickable(enabled = enabled) { onIgnore(d) },
                 contentAlignment = Alignment.Center,
-            ) { Text("무시", fontSize = BODY, fontWeight = FontWeight.Bold, color = if (enabled) Color.White else Palette.OnBrandSoft) }
+            ) { Text("무시", fontSize = BODY, fontWeight = FontWeight.Bold, color = if (enabled) Color.White else Palette.OnNightSoft) }
         }
     }
 }

@@ -31,9 +31,9 @@ private val SMALL = 28.sp
 private val BODY = 30.sp
 private val CardShape = RoundedCornerShape(28.dp)
 private val ButtonShape = RoundedCornerShape(18.dp)
-// 남색 카드 대신 브랜드 파랑을 쓴다. 작은 칸은 흰 글자 대비를 위해 진한 브랜드(PaletteBrandContrastTest).
-private val OnDarkSoft = Palette.OnBrandSoft
-private val DarkTile = Palette.BrandDeep
+// 시안의 짙은 카드와 칸(PaletteBrandContrastTest).
+private val OnDarkSoft = Palette.OnNightSoft
+private val DarkTile = Palette.NightTile
 
 /** SPEC R12-4, 작업 25: 앞차 따라가기 화면. [model]만 그리고, 누름은 콜백으로 넘긴다. */
 @Composable
@@ -47,7 +47,7 @@ fun FollowScreen(
 ) {
     val main: @Composable () -> Unit = {
         Column(
-            Modifier.fillMaxWidth().background(Palette.Brand, CardShape).padding(36.dp),
+            Modifier.fillMaxWidth().background(Palette.Night, CardShape).padding(36.dp),
             verticalArrangement = Arrangement.spacedBy(28.dp),
         ) {
             Text("내 내비가 앞차 위치로 안내하고 있어요", fontSize = SMALL, color = OnDarkSoft)

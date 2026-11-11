@@ -216,3 +216,5 @@ NaviHelper 3.0.5 AAR을 javap로 확인한 API(`getBookmarkInfo`, `getRecentDest
 | R12-3 예시 | 100m → 다시 요청 안 함, 100m(누적 200m) → 다시 요청(`onRouteStarted distance=2800`), 300m → 다시 요청(`distance=3100`). 화면 "다시 요청 2번", "약 1.5km 앞" |
 | 끊기 | [끊기] → `cancelRoute` → `onRouteCancelled`, 내비가 경로 없는 화면으로 돌아갔다. 위치 요청이 멈추고 홈에서 그룹은 남았다 |
 | 확인 못 함 | 경로 요청 실패와 [다시 요청], 좁은 창의 따라가기 화면, 주행 중(D) [끊기](단위 테스트·R10 규칙으로만) |
+| 내비 앱 띄우기 | 현대차 내비 앱은 에뮬레이터에서 `ai.umos.maps.android.navigation.app/.MainActivity`(런처 앱)다. 매니페스트 `<queries>`에 패키지를 적고 `getLaunchIntentForPackage`로 띄우자 내비가 "어디로 갈까요?" 검색창과 함께 앞으로 왔다(퍼미션 불필요). 실차 패키지 이름은 확인하지 못했다(R11-21) |
+| 최근 목적지에 앞차 | 앞차 따라가기로 요청한 "민수 차"(주소 없음)가 내비 최근 목적지에 기록됐다. 주소가 빈 최근 목적지는 보여 주지 않는다(R11-21) |

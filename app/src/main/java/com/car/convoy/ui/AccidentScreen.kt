@@ -43,7 +43,7 @@ private val Demo = Palette.Demo
 fun AccidentPrompt(model: AccidentScreenModel, onOk: () -> Unit) {
     Box(
         modifier = Modifier.fillMaxSize()
-            .background(Palette.BrandNavy.copy(alpha = 0.80f))
+            .background(Palette.Night.copy(alpha = 0.80f))
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {},
         contentAlignment = Alignment.Center,
     ) {

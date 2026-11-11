@@ -9,35 +9,32 @@ import com.car.convoy.domain.UserStatus
  * 글자색은 흰 카드, 회색 바탕, 같은 색 12% 칩 위에서 모두 4.5:1 이상이다.
  */
 internal object Palette {
-    /** 아이콘과 앱의 브랜드 색: 네이비 → 블루 → 시안. */
+    /** 앱 아이콘 색(네이비 → 블루 → 시안). 아이콘과 테마의 보조 색에만 쓰고, 화면 강조색은 시안 파랑(Brand)을 쓴다. */
     val BrandNavy = Color(0xFF071B64)
     val BrandBlue = Color(0xFF086AB5)
     val BrandCyan = Color(0xFF17CFE0)
     val BrandCyanFill = Color(0xFFD7F5F7)
 
-    /**
-     * 브랜드 색은 아이콘의 파랑 하나다. 버튼·선택·큰 카드처럼 채우는 곳에 쓰고 글자는 흰색을 쓴다(5.6:1).
-     * 남색 카드는 쓰지 않는다(화면이 어두워진다).
-     */
-    val Brand = BrandBlue
+    /** 화면 강조색: 처음 시안(Convoy 그룹 흐름 시안)의 파랑. 채우면 흰 글자 6.6:1, 글자로 써도 바탕 위 6.0:1. */
+    val Brand = Color(0xFF2350D6)
 
-    /** 브랜드 카드 안의 작은 칸, 브랜드 카드 위 비활성 버튼. 밝게 하면 흰 글자 대비가 떨어지므로 더 진하게 한다. */
-    val BrandDeep = Color(0xFF065A9B)
+    /** 브랜드 위 보조 글자(5.5:1). */
+    val OnBrandSoft = Color(0xFFE3EAFD)
 
-    /** 브랜드 위 보조 글자(브랜드 5.0:1, 진한 브랜드 6:1 이상). */
-    val OnBrandSoft = Color(0xFFE8F3FC)
+    /** 시안의 짙은 카드(앞차 따라가기, 내비 제안). 짙은 칸과 보조 글자도 시안 값. */
+    val Night = Color(0xFF0F1720)
+    val NightTile = Color(0xFF1B2533)
+    val OnNightSoft = Color(0xFFAEB7C4)
 
-    /** 화면 바탕: 브랜드 기운이 아주 약한 흰색. */
-    val Page = Color(0xFFF4F8FC)
+    /** 화면 바탕과 카드(시안). */
+    val Page = Color(0xFFF4F5F7)
     val Card = Color.White
-    val Ink = Color(0xFF10233F)
+    val CardLine = Color(0xFFE3E6EA)
+    val Ink = Color(0xFF0F1720)
     /** 보조 글자. 이전 값 #5E6978은 회색 바탕 칩에서 4.3:1이었다. */
-    val Soft = Color(0xFF526273)
-    /**
-     * 글자·버튼 강조색. 브랜드 블루(#086AB5)는 회색 바탕 칩에서 4.3:1이라 같은 계열의 더 진한 값을 쓴다(4.9:1, PaletteContrastTest).
-     * 아이콘·장식에는 BrandBlue를 그대로 쓴다.
-     */
-    val Accent = Color(0xFF0761A6)
+    val Soft = Color(0xFF56606D)
+    /** 글자·테두리 강조색. 시안대로 브랜드 파랑을 그대로 쓴다(칩에서도 5.0:1). */
+    val Accent = Brand
     val Danger = Color(0xFFB3261E)
     val DangerSoft = Color(0xFFFBE9E7)
 
@@ -47,9 +44,10 @@ internal object Palette {
     val Done = Color(0xFF186B3D)
 
     /** "주행 중". 이전 값 #1F6FD1은 칩에서 4.2:1이었다. */
-    val Driving = Color(0xFF006B85)
-    val ButtonFill = Color(0xFFE8F3FC)
-    val ButtonLine = Color(0xFFB9D3E8)
+    val Driving = Color(0xFF1B5FB8)
+    /** 고를 수 있는 줄의 바탕(시안의 회색 줄)과 테두리 버튼 선. */
+    val ButtonFill = Color(0xFFF1F3F6)
+    val ButtonLine = Color(0xFFC9D3F3)
     val DoneFill = Color(0xFFDFF2E6)
     /** 비활성 버튼 바탕. 투명도로 흐리지 않고 이 바탕과 Soft 글자로 표시해 글자 대비를 지킨다. */
     val DisabledFill = Color(0xFFDDE1E7)
@@ -57,8 +55,8 @@ internal object Palette {
     val FamilyFill = Color(0xFFE3F4EA)
     val PendingText = Color(0xFF8A4B00)
     val PendingFill = Color(0xFFFFF1DC)
-    val MemberText = BrandBlue
-    val MemberFill = Color(0xFFE5F2FB)
+    val MemberText = Color(0xFF1A3FA8)
+    val MemberFill = Color(0xFFE3EAFD)
 }
 
 /** R11-20 멤버 상태 색. "출발 전"은 이전 #7D8796(칩 3.2:1) 대신 보조 글자색을 쓴다. */
