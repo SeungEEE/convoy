@@ -10,100 +10,105 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import com.car.convoy.data.AccidentController
+import com.car.convoy.data.Cancellable
 import com.car.convoy.data.FriendController
 import com.car.convoy.data.GroupController
+import com.car.convoy.data.GroupRoster
 import com.car.convoy.data.MainThreadScheduler
 import com.car.convoy.data.navi.NaviHelperAdapter
 import com.car.convoy.data.vehicle.VehicleSource
 import com.car.convoy.domain.Destination
 import com.car.convoy.domain.FamilyState
-import com.car.convoy.domain.FollowEvent
 import com.car.convoy.domain.Friend
+import com.car.convoy.domain.Gear
 import com.car.convoy.domain.TelltaleReading
 import com.car.convoy.domain.TelltaleState
 import com.car.convoy.domain.TelltaleType
 import com.car.convoy.domain.UserStatus
+import com.car.convoy.domain.port.ConvoyServer
 import com.car.convoy.ui.AccidentPrompt
 import com.car.convoy.ui.AccidentScreenModel
-import com.car.convoy.ui.AppTab
-import com.car.convoy.ui.AppTabs
+import com.car.convoy.ui.DriveNavButtons
 import com.car.convoy.ui.FamilyChip
-import com.car.convoy.ui.FriendScreen
-import com.car.convoy.ui.FriendScreenModel
-import com.car.convoy.ui.friendScreenModel
 import com.car.convoy.ui.GroupScreen
+import com.car.convoy.ui.GroupScreenModel
+import com.car.convoy.ui.HomeScreen
+import com.car.convoy.ui.HomeScreenModel
+import com.car.convoy.ui.MY_NAME
+import com.car.convoy.ui.PRESET_DESTINATIONS
 import com.car.convoy.ui.SentFamilyCard
 import com.car.convoy.ui.accidentScreenModel
-import com.car.convoy.ui.GroupScreenModel
-import com.car.convoy.ui.PRESET_DESTINATIONS
 import com.car.convoy.ui.groupScreenModel
+import com.car.convoy.ui.homeScreenModel
 
 private const val TAG = "Convoy"
 private const val ME = "me"
-private val MEMBERS = listOf(ME, "m1", "m2")
-private val NAMES = mapOf(ME to "나", "m1" to "일행 1", "m2" to "일행 2")
 
-// 작업 22(R2-5): 외부 서버가 없어 앱에 미리 정해 둔 가상 친구. 서준(오프라인)은 목록에 나오지 않는다.
-private val FRIENDS = listOf(
-    Friend("f1", "민수", UserStatus.ACTIVE),
-    Friend("f2", "지영", UserStatus.BUSY),
-    Friend("f3", "현우", UserStatus.ACTIVE),
-    Friend("f4", "서준", UserStatus.OFFLINE),
+// 작업 23(R4-5): 외부 서버가 없어 앱에 미리 정해 둔 가상 인물. 서준(오프라인)은 보이지 않는다.
+private val PEOPLE = listOf(
+    Friend("p1", "민수", UserStatus.ACTIVE),
+    Friend("p2", "현우", UserStatus.ACTIVE),
+    Friend("p3", "수진", UserStatus.ACTIVE),
+    Friend("p4", "지영", UserStatus.BUSY),
+    Friend("p5", "서준", UserStatus.OFFLINE),
 )
 
+private enum class Screen { HOME, DRIVE }
+
 /**
- * 작업 15 그룹 주행 화면(R11-20). 나는 리더이고 실제 SDK를 쓰며, 일행 1·2는 가상 멤버다(R11-18).
- * adb 시연 명령도 그대로 받는다(녹화·자동 확인용).
- *   adb shell am start -n com.car.convoy/.MainActivity --es demo dest:서울역
- *   adb shell am start -n com.car.convoy/.MainActivity --es demo depart:m1
- *   adb shell am start -n com.car.convoy/.MainActivity --es demo arrive:m1
- *   adb shell am start -n com.car.convoy/.MainActivity --es demo retry
- * 작업 20 사고 의심(R8): 경고등은 Virtual Console에서 켜는 것이 기본이고, 콘솔을 쓸 수 없을 때 시연 명령으로 넣는다.
- *   adb shell am start -n com.car.convoy/.MainActivity --es demo airbag:on   (airbag:off)
- *   adb shell am start -n com.car.convoy/.MainActivity --es demo ok          ([괜찮아요])
- *   adb shell am start -n com.car.convoy/.MainActivity --es demo airbaglater (8초 뒤 켜기, R8-11 확인용)
- * 작업 22 친구 목록(R2-5):
- *   --es demo tab:friends (tab:group)   --es demo follow:f1   --es demo accept (decline)   --es demo cancel
- *   --es demo status:busy (active, offline)
+ * 작업 23 홈(R2-5, R4-5)과 그룹 주행(R11-20). 나는 리더이고 실제 SDK를 쓰며, 그룹 멤버는 가상 인물이다(R11-18).
+ * adb 시연 명령(녹화·자동 확인용): adb shell am start -n com.car.convoy/.MainActivity --es demo <명령>
+ *   홈: invite:p1, accept, decline(첫 수락 대기에 응답), start(목적지로 함께), disband, status:busy
+ *   주행: dest:서울역, depart:p1, arrive:p1, retry, home, end, resume
+ *   사고(R8): airbag:on|off, ok, airbaglater(8초 뒤 켜기, R8-11 확인용)
  */
 class MainActivity : ComponentActivity() {
 
     private val scheduler = MainThreadScheduler()
-    private val model = mutableStateOf<GroupScreenModel?>(null)
+    private val screen = mutableStateOf(Screen.HOME)
+    private val homeModel = mutableStateOf<HomeScreenModel?>(null)
+    private val groupModel = mutableStateOf<GroupScreenModel?>(null)
     private val accidentModel = mutableStateOf<AccidentScreenModel?>(null)
-    private val friendModel = mutableStateOf<FriendScreenModel?>(null)
-    private val tab = mutableStateOf(AppTab.GROUP)
-    private val friends = FriendController(FRIENDS)
+
+    private val roster = GroupRoster(PEOPLE)
+    private val me = FriendController(PEOPLE) // 내 상태(R2-1). 따라가기는 작업 25에서 쓴다.
+    private val names = PEOPLE.associate { it.id to it.name } + (ME to MY_NAME)
+
+    /** SDK가 기어를 다시 보내 주지 않으므로 여기서 들고, 주행마다 새 컨트롤러에 넘긴다. */
+    private var gear = Gear.UNKNOWN
+
+    /** 진행 중인 "목적지로 함께". 없으면 주행이 "없음"(R4-5). */
+    private var drive: GroupController? = null
+    private var driveMembers: List<String> = emptyList()
 
     private lateinit var navi: NaviHelperAdapter
     private lateinit var vehicle: VehicleSource
-    private lateinit var controller: GroupController
     private lateinit var accident: AccidentController
     private var wasChecking = false
-    private var countdown: com.car.convoy.data.Cancellable? = null
+    private var countdown: Cancellable? = null
+
+    // 가족 알림은 그룹 주행과 무관하다(R9-1). 받는 차가 없어 보낸 내용은 화면 카드로만 보여 준다(R8-10).
+    private val familyServer = object : ConvoyServer {
+        override fun sendDestination(memberId: String, destination: Destination) = Unit
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         navi = NaviHelperAdapter(
             applicationContext,
-            routeStarted = { name -> scheduler.post { controller.onRouteStarted(name) } },
-            destinationArrived = { n, a -> scheduler.post { controller.onDestinationArrived(n, a) } },
+            routeStarted = { name -> scheduler.post { drive?.onRouteStarted(name) } },
+            destinationArrived = { n, a -> scheduler.post { drive?.onDestinationArrived(n, a) } },
             // requestRoute 예외는 호출 중 동기로 오므로 큐에 넣지 않고 바로 알린다(R11-19). 화면 갱신만 나중에 한다.
-            routeFailed = { controller.onMyRouteFailed(); scheduler.post { refresh() } },
+            routeFailed = { drive?.onMyRouteFailed(); scheduler.post { refresh() } },
             locationReceived = { loc -> scheduler.post { accident.onLocation(loc) } },
             log = ::log,
         )
-        controller = GroupController(ME, MEMBERS, navi, scheduler) { u ->
-            log("${u.memberId} ${u.event} → ${controller.session.memberState(u.memberId)} " +
-                "효과=${u.result.memberEffect} 그룹=${u.result.groupEffect}")
-            refresh()
-        }
-        // R8-9: 시연에서는 가족 1명이 이미 등록된 상태로 시작한다(시연 설정).
-        accident = AccidentController(controller.server, navi, scheduler, FamilyState.ACTIVE, ::onAccidentChange)
+        // R8-9의 가족 상태는 작업 24에서 "가족 없이 시작"으로 바뀐다.
+        accident = AccidentController(familyServer, navi, scheduler, FamilyState.ACTIVE, ::onAccidentChange)
         vehicle = VehicleSource(
             applicationContext,
-            onGear = { g -> scheduler.post { controller.onGearChanged(g); refresh() } },
+            onGear = { g -> scheduler.post { gear = g; drive?.onGearChanged(g); refresh() } },
             onTelltales = { r -> scheduler.post { accident.onTelltales(r) } },
             log = ::log,
         )
@@ -111,35 +116,36 @@ class MainActivity : ComponentActivity() {
         setContent {
             MaterialTheme {
                 val accidentUi = accidentModel.value
+                val familyChip: @Composable () -> Unit = { accidentUi?.let { a -> FamilyChip(a.familyLabel) } }
                 Box {
-                    val tabs: @Composable () -> Unit = { AppTabs(tab.value) { tab.value = it } }
-                    when (tab.value) {
-                        AppTab.GROUP -> model.value?.let {
-                            GroupScreen(
+                    val group = groupModel.value
+                    if (screen.value == Screen.DRIVE && group != null) {
+                        GroupScreen(
+                            model = group,
+                            onChooseDestination = ::chooseDestination,
+                            onRetry = { drive?.retryMyRoute(); refresh() },
+                            onDemoDepart = { id -> drive?.server?.depart(id); refresh() },
+                            onDemoArrive = { id -> drive?.server?.arrive(id); refresh() },
+                            headerExtra = familyChip,
+                            belowMembers = { accidentUi?.sentCard?.let { c -> SentFamilyCard(c) } },
+                            nav = { DriveNavButtons(onHome = ::goHome, onEnd = ::endDrive) },
+                        )
+                    } else {
+                        homeModel.value?.let {
+                            HomeScreen(
                                 model = it,
-                                onChooseDestination = ::chooseDestination,
-                                onRetry = { controller.retryMyRoute(); refresh() },
-                                onDemoDepart = { id -> controller.server.depart(id); refresh() },
-                                onDemoArrive = { id -> controller.server.arrive(id); refresh() },
-                                headerExtra = { accidentUi?.let { a -> FamilyChip(a.familyLabel) } },
-                                belowMembers = { accidentUi?.sentCard?.let { c -> SentFamilyCard(c) } },
-                                tabs = tabs,
-                            )
-                        }
-                        AppTab.FRIENDS -> friendModel.value?.let {
-                            FriendScreen(
-                                model = it,
-                                onMyStatus = { s -> friends.setMyStatus(s); refresh() },
-                                onRequestFollow = ::requestFollow,
-                                onCancelFollow = { friends.cancelFollow(); refresh() },
-                                onDemoAccept = { friends.respond(FollowEvent.ACCEPT); refresh() },
-                                onDemoDecline = { friends.respond(FollowEvent.DECLINE); refresh() },
-                                headerExtra = { accidentUi?.let { a -> FamilyChip(a.familyLabel) } },
-                                tabs = tabs,
+                                onMyStatus = { s -> me.setMyStatus(s); refresh() },
+                                onInvite = ::invite,
+                                onStartDestination = ::startDestination,
+                                onResume = ::resume,
+                                onDisband = ::disband,
+                                onDemoAccept = { respondInvite(true) },
+                                onDemoDecline = { respondInvite(false) },
+                                headerExtra = familyChip,
                             )
                         }
                     }
-                    // 탭은 각 화면 머리줄에 놓는다(R2-5). 작업 21: 사고 확인 중이면 어느 탭 위에도 "괜찮으세요?"를 덮는다(R2-5).
+                    // R2-5: 사고 확인 중이면 어느 화면 위에도 "괜찮으세요?"를 덮는다(작업 21).
                     if (accidentUi?.showPrompt == true) AccidentPrompt(accidentUi) { accident.respondOk() }
                 }
             }
@@ -163,15 +169,69 @@ class MainActivity : ComponentActivity() {
         super.onDestroy()
     }
 
-    private fun chooseDestination(destination: Destination) {
-        log("목적지 선택 ${destination.name}")
-        controller.setDestination(destination)
+    // ---- 홈(R4-5) ----
+
+    private fun invite(id: String) {
+        val sent = roster.invite(id, gear, driveActive = drive != null)
+        log("그룹 초대 $id ${if (sent) "보냄" else "조건 안 맞아 무시"}")
         refresh()
     }
 
-    private fun requestFollow(friendId: String) {
-        val sent = friends.requestFollow(friendId, controller.currentGear)
-        log("따라가기 요청 $friendId ${if (sent) "보냄" else "조건 안 맞아 무시"}")
+    /** 시연용 패널: 첫 수락 대기의 응답(R4-4). */
+    private fun respondInvite(accept: Boolean) {
+        roster.firstPendingInvite?.let { id ->
+            roster.respond(id, accept)
+            log("초대 응답 $id ${if (accept) "수락" else "거절"}")
+        }
+        refresh()
+    }
+
+    private fun disband() {
+        val done = roster.disband(gear, driveActive = drive != null)
+        log("그룹 해산 ${if (done) "됨" else "조건 안 맞아 무시"}")
+        refresh()
+    }
+
+    /** R4-5 [목적지로 함께]: 그 시점의 그룹 멤버로 새 세션을 만든다(R11-22). */
+    private fun startDestination() {
+        val model = homeModel.value ?: return
+        if (!model.canStartDestination) return
+        driveMembers = listOf(ME) + roster.members
+        drive = GroupController(ME, driveMembers, navi, scheduler, initialGear = gear) { u ->
+            log("${u.memberId} ${u.event} → ${drive?.session?.memberState(u.memberId)} " +
+                "효과=${u.result.memberEffect} 그룹=${u.result.groupEffect}")
+            refresh()
+        }
+        log("목적지로 함께 시작: $driveMembers")
+        screen.value = Screen.DRIVE
+        refresh()
+    }
+
+    private fun resume() {
+        if (drive != null) screen.value = Screen.DRIVE
+        refresh()
+    }
+
+    /** R11-20 [홈으로]: 주행은 이어 둔다. */
+    private fun goHome() {
+        screen.value = Screen.HOME
+        refresh()
+    }
+
+    /** R11-20, R11-22 [주행 끝내기]: 세션을 버리고 주행 "없음"으로. 그룹은 남는다. 주행 중에도 된다(R10). */
+    private fun endDrive() {
+        log("주행 끝내기")
+        drive = null
+        driveMembers = emptyList()
+        screen.value = Screen.HOME
+        refresh()
+    }
+
+    // ---- 그룹 주행(R11) ----
+
+    private fun chooseDestination(destination: Destination) {
+        log("목적지 선택 ${destination.name}")
+        drive?.setDestination(destination)
         refresh()
     }
 
@@ -182,10 +242,19 @@ class MainActivity : ComponentActivity() {
         val (command, arg) = demo.split(":", limit = 2).let { it[0] to it.getOrNull(1) }
         runCatching {
             when (command) {
+                "invite" -> invite(arg!!)
+                "accept" -> respondInvite(true)
+                "decline" -> respondInvite(false)
+                "start" -> startDestination()
+                "disband" -> disband()
+                "status" -> me.setMyStatus(UserStatus.valueOf(arg!!.uppercase()))
+                "home" -> goHome()
+                "resume" -> resume()
+                "end" -> endDrive()
                 "dest" -> chooseDestination(PRESET_DESTINATIONS.first { it.name == arg })
-                "depart" -> controller.server.depart(arg!!)
-                "arrive" -> controller.server.arrive(arg!!)
-                "retry" -> controller.retryMyRoute()
+                "depart" -> drive?.server?.depart(arg!!)
+                "arrive" -> drive?.server?.arrive(arg!!)
+                "retry" -> drive?.retryMyRoute()
                 "airbag" -> accident.onTelltales(
                     listOf(TelltaleReading(TelltaleType.AIRBAG, if (arg == "on") TelltaleState.ON else TelltaleState.OFF)),
                 )
@@ -194,12 +263,6 @@ class MainActivity : ComponentActivity() {
                 "airbaglater" -> scheduler.schedule(8_000) {
                     accident.onTelltales(listOf(TelltaleReading(TelltaleType.AIRBAG, TelltaleState.ON)))
                 }
-                "tab" -> tab.value = if (arg == "friends") AppTab.FRIENDS else AppTab.GROUP
-                "follow" -> requestFollow(arg!!)
-                "accept" -> friends.respond(FollowEvent.ACCEPT)
-                "decline" -> friends.respond(FollowEvent.DECLINE)
-                "cancel" -> friends.cancelFollow()
-                "status" -> friends.setMyStatus(UserStatus.valueOf(arg!!.uppercase()))
                 else -> log("모르는 명령: $demo")
             }
         }.onFailure { log("명령 실패: $it") }
@@ -207,16 +270,20 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun refresh() {
-        model.value = groupScreenModel(
-            session = controller.session,
-            myId = ME,
-            memberIds = MEMBERS,
-            names = NAMES,
-            isLeader = true,
-            gear = controller.currentGear,
-            canRetryMyRoute = controller.canRetryMyRoute,
-        )
-        friendModel.value = friendScreenModel(FRIENDS, friends.myStatus, friends.follow, controller.currentGear)
+        val d = drive
+        homeModel.value = homeScreenModel(PEOPLE, me.myStatus, roster, driveActive = d != null, gear = gear)
+        groupModel.value = d?.let {
+            groupScreenModel(
+                session = it.session,
+                myId = ME,
+                memberIds = driveMembers,
+                names = names,
+                isLeader = true,
+                gear = gear,
+                canRetryMyRoute = it.canRetryMyRoute,
+            )
+        }
+        if (d == null && screen.value == Screen.DRIVE) screen.value = Screen.HOME
         accidentModel.value = accidentScreenModel(
             checking = accident.checking,
             remainingSeconds = accident.remainingSeconds,
