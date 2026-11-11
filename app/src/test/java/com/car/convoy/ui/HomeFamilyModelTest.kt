@@ -50,7 +50,7 @@ class HomeFamilyModelTest {
     @Test fun active_card() {
         val c = model(active()).familyCard
         assertEquals(FamilyCardState.ACTIVE, c.state)
-        assertEquals("민수 · 사고 알림 받는 중", c.message)
+        assertEquals("사고가 의심되면 민수님에게 알려요", c.message) // SPEC R9-5 시안 문구로 바뀜(사용자 승인)
         assertTrue(c.showRelease)
         assertFalse(c.showCancel)
     }
