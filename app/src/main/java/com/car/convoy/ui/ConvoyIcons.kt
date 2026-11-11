@@ -20,7 +20,7 @@ import androidx.compose.ui.unit.dp
  * 시안(Convoy 그룹 흐름 시안)의 선 아이콘. 아이콘 라이브러리를 더 넣지 않으려고 24 단위 격자에 직접 그린다.
  * 장식용이라 접근성 설명은 옆 글자가 맡는다.
  */
-enum class ConvoyIcon { Pin, Check, ChevronRight, ChevronLeft, Search, Shield, Home, Building }
+enum class ConvoyIcon { Pin, Check, ChevronRight, ChevronLeft, Search, Shield, Home, Building, Link, Group }
 
 @Composable
 fun Icon24(icon: ConvoyIcon, color: Color, size: Dp = 32.dp, strokeWidth: Float = 2.2f) {
@@ -55,6 +55,16 @@ fun Icon24(icon: ConvoyIcon, color: Color, size: Dp = 32.dp, strokeWidth: Float 
             )
             ConvoyIcon.Home -> drawPath(p(4f to 11f, 12f to 4f, 20f to 11f, 20f to 20f, 4f to 20f, 4f to 11f), color, style = stroke)
             ConvoyIcon.Building -> building(u, color, stroke)
+            // 앞차 따라가기: 두 점을 잇는 선.
+            ConvoyIcon.Link -> {
+                drawCircle(color, radius = 2.5f * u, center = Offset(6 * u, 17 * u), style = stroke)
+                drawCircle(color, radius = 2.5f * u, center = Offset(18 * u, 7 * u), style = stroke)
+                drawPath(p(8f to 15.5f, 16f to 8.5f), color, style = stroke)
+            }
+            // 함께 출발: 세 점(그룹).
+            ConvoyIcon.Group -> listOf(6f to 17f, 18f to 17f, 12f to 7f).forEach { (x, y) ->
+                drawCircle(color, radius = 2.5f * u, center = Offset(x * u, y * u), style = stroke)
+            }
         }
     }
 }

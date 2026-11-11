@@ -198,7 +198,7 @@ class MainActivity : ComponentActivity() {
                                 onFollow = ::requestFollow,
                                 onDemoFollowAccept = { respondFollow(true) },
                                 onDemoFollowDecline = { respondFollow(false) },
-                                headerExtra = familyChip,
+                                // 시안: 홈은 가족 카드가 있어 머리줄 가족 칩을 두지 않는다.
                                 belowFamily = { accidentUi?.sentCard?.let { c -> SentFamilyCard(c, sentTo) } },
                             )
                         }
