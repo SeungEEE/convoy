@@ -144,3 +144,15 @@
 | 주행 중(D) | 콘솔 HTTP `PUT /vehicle/gear?gear=Drive`로 D를 보내자 이번에는 브레이크 없이 한 번에 `GEAR_DRIVE`가 왔다(1회. 작업 20 기록과 다름). D에서 [끊기]와 내 상태 변경은 됐고, 요청 버튼은 "정차 중에만 요청할 수 있어요"로 비활성이었다(R10) |
 | 사고 확인 덮개 | 친구 탭에서 `--es demo airbag:on`을 넣자 "괜찮으세요?"가 친구 화면 위에 덮였다(R2-5) |
 | 탭 | [친구] [그룹 주행] 탭 전환이 됐다. 기본 탭은 그룹 주행이다(기존 시연 순서 유지) |
+
+## Pleos UI 디자인 가이드 확인 (2026-11-11, 문서 읽기)
+출처: https://document.pleos.ai/docs/connect/guide/docs-design/Introduction/intro 와 하위 페이지(layout, window, colors, typography, basic-button, iconography, segmented-menu(Tabs), system-popup), 주행 안전 설계 https://document.pleos.ai/docs/pleos-only/vehicle-app-planning-guide/driver-distraction-guideline
+| 항목 | 내용 |
+|---|---|
+| 앱 창 | 앱 2개를 띄우면 1:1 또는 2:1로 나눈다. 앱은 가로·세로 레이아웃을 모두 지원해야 한다(가로 전용 게임 등 예외). 상태 바, App library, 공조, 키보드는 앱 위 레이어라 앱 창을 잠시 가릴 수 있다 |
+| 대비·글꼴 | 텍스트·아이콘·이미지 대비 4.5:1 이상. 권장 글꼴 Asta Sans. 최소 12sp. 중요 정보 글자 높이 5mm 이상, 보조 3mm 이상 |
+| 아이콘 | 48×48dp 그리드, Filled·Outlined 두 종류. 텍스트 라벨과 함께 쓴다 |
+| 조작 | 입력 응답 0.25초 이내(늦으면 진행 중 표시). 한 손 조작. 터치 시 햅틱 또는 음성 피드백 권장. 키보드 입력보다 프리셋·최근 항목 우선 |
+| 주행 중 | CarUxRestrictions로 제한 상태를 확인해 기능을 줄이거나 막는다. 동영상, 움직이는 이미지, 자동 스크롤 금지. 드롭다운·다단 메뉴 남용 금지 |
+| 주간·야간 | "조명 환경에 따라 UI 밝기와 대비를 자동 조정"이라고만 적혀 있다. 필수라는 표현은 없고, 앱이 밤을 알아내는 방법(Android uiMode, Pleos API 등)도 가이드에 없다 |
+| 확인 못 함 | 버튼 크기·모서리, 색 값, 글자 역할별 크기, 탭·팝업 치수, 상태 바·GNB 높이, 앱 창 dp 크기. 모두 이미지로만 제공된다 |
