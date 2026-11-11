@@ -67,7 +67,7 @@ class DestinationPickerModelTest {
     }
 
     @Test fun recent_marks_current_group_destination_within_10m() {
-        val m = model(group = near, recent = listOf(here, far))
+        val m = model(group = near, recent = listOf(here, d("먼 곳", 37.6)))
         assertTrue(m.recent[0].current)
         assertFalse(m.recent[1].current)
     }
