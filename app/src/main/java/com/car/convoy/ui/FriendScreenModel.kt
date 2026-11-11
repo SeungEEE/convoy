@@ -82,3 +82,29 @@ fun friendScreenModel(
     }
     return FriendScreenModel(myStatus, rows, pending)
 }
+
+/** SPEC R11-20: 1열로 쌓는 기준(화면 루트의 Compose maxWidth, dp). 정확히 1,200dp는 2열이다. */
+const val SINGLE_COLUMN_BELOW_DP = 1200f
+
+fun isSingleColumn(maxWidthDp: Float): Boolean = maxWidthDp < SINGLE_COLUMN_BELOW_DP
+
+/** 친구 화면 1열에서 쌓는 칸. */
+sealed interface FriendSlot {
+    data class FriendItem(val row: FriendRow) : FriendSlot
+    data object DemoPanel : FriendSlot
+    data object MyStatus : FriendSlot
+}
+
+/**
+ * SPEC R2-5: 1열에서는 주행 중에도 하는 조작을 위에 둔다.
+ * 진행 중인 따라가기 친구 줄 → 시연 패널(요청 대기 중일 때만) → 내 상태 → 나머지 친구(원래 순서).
+ */
+fun friendSingleColumnOrder(model: FriendScreenModel): List<FriendSlot> {
+    val (live, rest) = model.rows.partition { it.followLabel != null }
+    return buildList {
+        live.forEach { add(FriendSlot.FriendItem(it)) }
+        if (model.pendingRequest != null) add(FriendSlot.DemoPanel)
+        add(FriendSlot.MyStatus)
+        rest.forEach { add(FriendSlot.FriendItem(it)) }
+    }
+}
