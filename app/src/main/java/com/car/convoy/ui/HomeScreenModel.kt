@@ -124,10 +124,13 @@ fun homeScreenModel(
     )
 }
 
-/** SPEC R4-5: 1열 순서. 함께 출발, 시연용 패널(응답할 초대가 있을 때), 연결된 사람. */
+/**
+ * SPEC R4-5: 1열 순서. 함께 출발, 시연용 패널(응답할 초대나 가족 요청이 있을 때), 연결된 사람.
+ * 가족 카드(R9-5)는 항상 있으므로 화면이 이 순서 앞에 둔다.
+ */
 fun homeSingleColumnOrder(model: HomeScreenModel): List<HomeSlot> = buildList {
     add(HomeSlot.DEPARTURE)
-    if (model.pendingInvite != null) add(HomeSlot.DEMO)
+    if (model.pendingInvite != null || model.pendingFamily != null) add(HomeSlot.DEMO)
     add(HomeSlot.PEOPLE)
 }
 

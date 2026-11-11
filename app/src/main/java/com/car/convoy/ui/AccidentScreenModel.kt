@@ -16,6 +16,7 @@ data class AccidentScreenModel(
     val showPrompt: Boolean,
     val remainingLabel: String,
     val promptDetail: String,
+    /** 이전 머리줄 문구(작업 21). 작업 24부터 화면은 HomeScreenModel.familyHeader를 쓰고 이 값은 쓰지 않는다. */
     val familyLabel: String,
     val sentCard: SentCard?,
 )

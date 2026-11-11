@@ -85,11 +85,7 @@ fun HomeScreen(
         // R4-5: 1열 순서는 가족, 함께 출발, 시연용 패널, 연결된 사람. 가족 카드는 항상 있어 맨 앞에 둔다(R9-5).
         singleColumn = {
             familyCard()
-            // 가족 요청만 있으면 homeSingleColumnOrder에 시연 칸이 없으므로 연결된 사람 앞에 끼운다.
-            val order = homeSingleColumnOrder(model).let { o ->
-                if (model.pendingFamily != null && HomeSlot.DEMO !in o) o - HomeSlot.PEOPLE + HomeSlot.DEMO + HomeSlot.PEOPLE else o
-            }
-            order.forEach { slot ->
+            homeSingleColumnOrder(model).forEach { slot ->
                 when (slot) {
                     HomeSlot.DEPARTURE -> departure()
                     HomeSlot.DEMO -> demo()
@@ -292,13 +288,13 @@ private fun PersonLine(p: PersonRow, onInvite: (String) -> Unit, onDesignateFami
         // R9-5: 가족 표시. 이 사람이 가족(또는 수락 대기)이면 태그, 아니면 [가족으로 설정].
         when (p.familyTag) {
             null -> OutlineButton("가족으로 설정", enabled = p.canDesignateFamily, width = 220.dp) { onDesignateFamily(p.id) }
-            "가족" -> StatusTag(p.familyTag, Color(0xFF0F5A36), Color(0xFFE3F4EA), width = 220.dp)
-            else -> StatusTag(p.familyTag, Color(0xFF8A4B00), Color(0xFFFFF1DC), width = 220.dp)
+            "가족" -> StatusTag(p.familyTag, Palette.FamilyText, Palette.FamilyFill, width = 220.dp)
+            else -> StatusTag(p.familyTag, Palette.PendingText, Palette.PendingFill, width = 220.dp)
         }
         when (p.groupLabel) {
             null -> OutlineButton("그룹에 초대", enabled = p.canInvite) { onInvite(p.id) }
-            "수락 대기" -> StatusTag(p.groupLabel, Color(0xFF8A4B00), Color(0xFFFFF1DC))
-            else -> StatusTag(p.groupLabel, Color(0xFF1A3FA8), Color(0xFFE3EAFD))
+            "수락 대기" -> StatusTag(p.groupLabel, Palette.PendingText, Palette.PendingFill)
+            else -> StatusTag(p.groupLabel, Palette.MemberText, Palette.MemberFill)
         }
     }
     if (!last) Box(Modifier.fillMaxWidth().heightIn(min = 1.dp).background(Color(0xFFEEF0F3)))

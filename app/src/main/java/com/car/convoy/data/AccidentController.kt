@@ -81,6 +81,8 @@ class AccidentController(
 
     /** SPEC R9-2: 공유를 끄면 이후 가족에게 아무것도 보내지 않는다. */
     fun disableFamilySharing() {
+        // 가족 상태를 바깥에서 읽을 때 여기서 끄면 끈 것처럼 보이기만 한다. 해제는 FamilyController.release()로 한다.
+        check(familySource == null) { "가족 상태를 FamilyController에서 읽는 중이다. FamilyController.release()를 쓴다" }
         ownFamily = nextFamilyState(ownFamily, FamilyEvent.DISABLE)
         onChange()
     }

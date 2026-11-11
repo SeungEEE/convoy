@@ -30,6 +30,12 @@ internal object Palette {
     val DoneFill = Color(0xFFDFF2E6)
     /** 비활성 버튼 바탕. 투명도로 흐리지 않고 이 바탕과 Soft 글자로 표시해 글자 대비를 지킨다. */
     val DisabledFill = Color(0xFFDDE1E7)
+    val FamilyText = Color(0xFF0F5A36)
+    val FamilyFill = Color(0xFFE3F4EA)
+    val PendingText = Color(0xFF8A4B00)
+    val PendingFill = Color(0xFFFFF1DC)
+    val MemberText = Color(0xFF1A3FA8)
+    val MemberFill = Color(0xFFE3EAFD)
 }
 
 /** R11-20 멤버 상태 색. "출발 전"은 이전 #7D8796(칩 3.2:1) 대신 보조 글자색을 쓴다. */
