@@ -20,7 +20,11 @@ internal object Palette {
     val Ink = Color(0xFF10233F)
     /** 보조 글자. 이전 값 #5E6978은 회색 바탕 칩에서 4.3:1이었다. */
     val Soft = Color(0xFF526273)
-    val Accent = BrandBlue
+    /**
+     * 글자·버튼 강조색. 브랜드 블루(#086AB5)는 회색 바탕 칩에서 4.3:1이라 같은 계열의 더 진한 값을 쓴다(4.9:1, PaletteContrastTest).
+     * 아이콘·장식에는 BrandBlue를 그대로 쓴다.
+     */
+    val Accent = Color(0xFF0761A6)
     val Danger = Color(0xFFB3261E)
     val DangerSoft = Color(0xFFFBE9E7)
 
