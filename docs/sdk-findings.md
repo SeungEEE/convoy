@@ -149,7 +149,7 @@
 출처: https://document.pleos.ai/docs/connect/guide/docs-design/Introduction/intro 와 하위 페이지(layout, window, colors, typography, basic-button, iconography, segmented-menu(Tabs), system-popup), 주행 안전 설계 https://document.pleos.ai/docs/pleos-only/vehicle-app-planning-guide/driver-distraction-guideline
 | 항목 | 내용 |
 |---|---|
-| 앱 창 | 앱 2개를 띄우면 1:1 또는 2:1로 나눈다. 앱은 가로·세로 레이아웃을 모두 지원해야 한다(가로 전용 게임 등 예외). 상태 바, App library, 공조, 키보드는 앱 위 레이어라 앱 창을 잠시 가릴 수 있다 |
+| 앱 창 | 앱 2개를 띄우면 Connect-S는 1:1, Connect-W는 2:1 또는 1:2로 나눈다. 앱은 가로·세로 레이아웃을 모두 지원해야 한다(가로 전용 게임 등 예외). 상태 바, App library, 공조, 키보드는 앱 위 레이어라 앱 창을 잠시 가릴 수 있다 |
 | 대비·글꼴 | 텍스트·아이콘·이미지 대비 4.5:1 이상. 권장 글꼴 Asta Sans. 최소 12sp. 중요 정보 글자 높이 5mm 이상, 보조 3mm 이상 |
 | 아이콘 | 48×48dp 그리드, Filled·Outlined 두 종류. 텍스트 라벨과 함께 쓴다 |
 | 조작 | 입력 응답 0.25초 이내(늦으면 진행 중 표시). 한 손 조작. 터치 시 햅틱 또는 음성 피드백 권장. 키보드 입력보다 프리셋·최근 항목 우선 |
