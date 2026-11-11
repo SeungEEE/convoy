@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -61,6 +62,8 @@ fun GroupScreen(
     onRetry: () -> Unit,
     onDemoDepart: (String) -> Unit,
     onDemoArrive: (String) -> Unit,
+    picker: DestinationPickerModel = destinationPickerModel(null, null, null, emptyList(), emptyList()),
+    onIgnoreSuggestion: (Destination) -> Unit = {},
     headerExtra: @Composable () -> Unit = {},
     belowMembers: @Composable () -> Unit = {},
     nav: @Composable () -> Unit = {},
@@ -72,7 +75,7 @@ fun GroupScreen(
         belowMembers()
     }
     val right: @Composable () -> Unit = {
-        DestinationPicker(model, onChooseDestination)
+        DestinationPicker(model, picker, onChooseDestination, onIgnoreSuggestion)
         if (model.showRetry) RetryButton(onRetry)
         if (model.demoMemberIds.isNotEmpty()) DemoPanel(model, onDemoDepart, onDemoArrive)
     }
@@ -192,45 +195,86 @@ private fun MemberCard(row: MemberRow) {
     }
 }
 
+/** SPEC R11-20, R11-21: 목적지 바꾸기. 내비에서 정한 목적지 카드, 안내, 최근 목적지(또는 예비 목록), 즐겨찾기. */
 @Composable
-private fun DestinationPicker(model: GroupScreenModel, onChoose: (Destination) -> Unit) {
+private fun DestinationPicker(
+    model: GroupScreenModel,
+    picker: DestinationPickerModel,
+    onChoose: (Destination) -> Unit,
+    onIgnore: (Destination) -> Unit,
+) {
+    val enabled = model.canChooseDestination
     Column(
         Modifier.fillMaxWidth().background(Card, CardShape).padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         Text("목적지 바꾸기", fontSize = BODY, fontWeight = FontWeight.Bold, color = Ink)
-        if (!model.canChooseDestination && !model.finished) {
-            Text("정차 중에 리더만 바꿀 수 있어요", fontSize = SMALL, color = Soft)
+        if (!enabled && !model.finished) Text("정차 중에 리더만 바꿀 수 있어요", fontSize = SMALL, color = Soft)
+        picker.suggestion?.let { NaviSuggestionCard(it, enabled, onChoose, onIgnore) }
+        Text("현대차 내비에서 검색해 목적지를 정하고 돌아오면 여기에 떠요", fontSize = SMALL, color = Soft)
+        Text(if (picker.usingFallback) "추천 목적지" else "최근 목적지", fontSize = SMALL, fontWeight = FontWeight.Bold, color = Soft)
+        picker.recent.forEach { PickLine(it, enabled, onChoose) }
+        if (picker.bookmarks.isNotEmpty()) {
+            Text("즐겨찾기", fontSize = SMALL, fontWeight = FontWeight.Bold, color = Soft)
+            picker.bookmarks.forEach { PickLine(it, enabled, onChoose) }
         }
-        PRESET_DESTINATIONS.forEach { d ->
-            val selected = d.name == model.destinationName
-            val enabled = model.canChooseDestination
-            val label = if (selected) Color.White else if (enabled) Accent else Soft
-            Row(
-                modifier = Modifier.fillMaxWidth()
-                    .heightIn(min = 96.dp)
-                    // 비활성은 투명도 대신 회색 바탕으로 표시한다(글자 대비 유지, PaletteContrastTest). 선택된 목적지는 그대로 보인다.
-                    .background(if (selected) Accent else if (enabled) Palette.ButtonFill else Palette.DisabledFill, RoundedCornerShape(12.dp))
-                    .border(2.dp, if (selected) Accent else if (enabled) Palette.ButtonLine else Palette.DisabledFill, RoundedCornerShape(12.dp))
-                    .clip(RoundedCornerShape(12.dp))
-                    .clickable(enabled = model.canChooseDestination) { onChoose(d) }
-                    .padding(horizontal = 24.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text(d.name, fontSize = 34.sp, fontWeight = FontWeight.Bold, color = label)
-                    Text(
-                        d.address, fontSize = SMALL, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                        color = if (selected) Color.White.copy(alpha = 0.85f) else Soft,
-                    )
-                }
-                Text(
-                    if (selected) "✓ 지금 목적지" else "선택",
-                    fontSize = BODY, fontWeight = FontWeight.Bold,
-                    color = label,
-                )
-            }
+    }
+}
+
+/** R11-21: 리더가 내비에서 정한 목적지를 그룹과 함께할지 묻는다. [그룹과 함께 가기]는 R10 "그룹 목적지 변경"의 제한을 받는다. */
+@Composable
+private fun NaviSuggestionCard(d: Destination, enabled: Boolean, onChoose: (Destination) -> Unit, onIgnore: (Destination) -> Unit) {
+    Column(
+        Modifier.fillMaxWidth().background(Ink, RoundedCornerShape(20.dp)).padding(22.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text("내비에서 정한 목적지", fontSize = SMALL, color = Color(0xFFC9D0DA))
+        Text(d.name, fontSize = 34.sp, fontWeight = FontWeight.Bold, color = Color.White)
+        Text(d.address, fontSize = SMALL, color = Color(0xFFC9D0DA), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Box(
+                Modifier.weight(1f).heightIn(min = 84.dp)
+                    .background(if (enabled) Color.White else Color(0xFF3B4552), RoundedCornerShape(16.dp))
+                    .clip(RoundedCornerShape(16.dp))
+                    .clickable(enabled = enabled) { onChoose(d) },
+                contentAlignment = Alignment.Center,
+            ) { Text("그룹과 함께 가기", fontSize = BODY, fontWeight = FontWeight.Bold, color = if (enabled) Accent else Color(0xFFC9D0DA)) }
+            Box(
+                Modifier.widthIn(min = 140.dp).heightIn(min = 84.dp)
+                    .border(2.dp, Color(0xFF56606D), RoundedCornerShape(16.dp))
+                    .clip(RoundedCornerShape(16.dp))
+                    .clickable { onIgnore(d) },
+                contentAlignment = Alignment.Center,
+            ) { Text("무시", fontSize = BODY, fontWeight = FontWeight.Bold, color = Color(0xFFE1E5EB)) }
         }
+    }
+}
+
+@Composable
+private fun PickLine(row: PickRow, enabled: Boolean, onChoose: (Destination) -> Unit) {
+    val d = row.destination
+    val selected = row.current
+    val clickable = enabled && !selected
+    Row(
+        modifier = Modifier.fillMaxWidth()
+            .heightIn(min = 96.dp)
+            // 비활성은 투명도 대신 회색 바탕으로 표시한다(글자 대비 유지, PaletteContrastTest). 지금 목적지는 그대로 보인다.
+            .background(if (selected) Accent else if (enabled) Palette.ButtonFill else Palette.DisabledFill, RoundedCornerShape(12.dp))
+            .border(2.dp, if (selected) Accent else if (enabled) Palette.ButtonLine else Palette.DisabledFill, RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(enabled = clickable) { onChoose(d) }
+            .padding(horizontal = 24.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        val label = if (selected) Color.White else if (enabled) Accent else Soft
+        Column(Modifier.weight(1f)) {
+            Text(d.name, fontSize = 34.sp, fontWeight = FontWeight.Bold, color = label, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                d.address, fontSize = SMALL, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                color = if (selected) Color.White.copy(alpha = 0.85f) else Soft,
+            )
+        }
+        Text(if (selected) "✓ 지금 목적지" else "선택", fontSize = BODY, fontWeight = FontWeight.Bold, color = label)
     }
 }
 

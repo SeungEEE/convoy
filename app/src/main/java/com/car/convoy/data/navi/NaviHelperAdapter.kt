@@ -1,6 +1,9 @@
 package com.car.convoy.data.navi
 
+import ai.pleos.playground.navi.data.BookmarkInfo
 import ai.pleos.playground.navi.data.CurrentLocationInfo
+import ai.pleos.playground.navi.data.DestinationInfo
+import ai.pleos.playground.navi.data.RecentDestinationInfo
 import ai.pleos.playground.navi.data.DestinationArrivedInfo
 import ai.pleos.playground.navi.data.RouteInfo
 import ai.pleos.playground.navi.data.RouteStartInfo
@@ -24,6 +27,10 @@ class NaviHelperAdapter(
     private val routeFailed: () -> Unit,
     private val locationReceived: (ReportLocation) -> Unit,
     private val log: (String) -> Unit,
+    /** SPEC R11-21: 내비의 현재 목적지. 안내 중이 아니면 이름이 비고 좌표가 (0, 0)이다. */
+    private val naviDestination: (Destination) -> Unit = {},
+    private val recentDestinations: (List<Destination>) -> Unit = {},
+    private val bookmarks: (List<Destination>) -> Unit = {},
 ) : NaviPort, LocationPort {
 
     private val navi = NaviHelper(context)
@@ -43,6 +50,24 @@ class NaviHelperAdapter(
         }
 
         override fun onRouteCancelled() = log("SDK onRouteCancelled")
+
+        // ---- SPEC R11-21: 목적지 출처. onDestinationChanged는 에뮬레이터에서 오지 않아 쓰지 않는다(docs/sdk-findings.md). ----
+        override fun onDestinationInfo(destinationInfo: DestinationInfo) {
+            val d = destinationInfo
+            log("SDK 내비 목적지 [${d.name}] [${d.address}] ${d.latitude},${d.longitude} 표시=${d.displayLatitude},${d.displayLongitude}")
+            naviDestination(Destination(d.name.orEmpty(), d.address.orEmpty(), d.latitude, d.longitude))
+        }
+
+        override fun onRecentDestinationInfo(recentDestinationInfoList: List<RecentDestinationInfo>) {
+            log("SDK 최근 목적지 ${recentDestinationInfoList.size}개")
+            recentDestinationInfoList.forEach { log("SDK  최근 [${it.name}] ${it.latitude},${it.longitude} 표시=${it.displayLatitude},${it.displayLongitude}") }
+            recentDestinations(recentDestinationInfoList.map { Destination(it.name.orEmpty(), it.address.orEmpty(), it.latitude, it.longitude) })
+        }
+
+        override fun onBookmarkInfo(bookmarkInfoList: List<BookmarkInfo>) {
+            log("SDK 즐겨찾기 ${bookmarkInfoList.size}개")
+            bookmarks(bookmarkInfoList.map { Destination(it.name.orEmpty(), it.address.orEmpty(), it.latitude, it.longitude) })
+        }
 
         override fun onCurrentLocationInfo(currentLocationInfo: CurrentLocationInfo) {
             val info = currentLocationInfo
@@ -79,6 +104,13 @@ class NaviHelperAdapter(
                 poiSubId = "0",
             )
         ) }.onFailure { log("requestRoute 실패: $it"); routeFailed() }
+    }
+
+    /** SPEC R11-21: 내비 목적지·최근 목적지·즐겨찾기를 묻는다. 결과는 콜백으로 온다(스레드 보장 없음). */
+    fun queryDestinationSources() {
+        runCatching { navi.getDestinationInfo() }.onFailure { log("내비 목적지 조회 실패: $it") }
+        runCatching { navi.getRecentDestinationInfo() }.onFailure { log("최근 목적지 조회 실패: $it") }
+        runCatching { navi.getBookmarkInfo() }.onFailure { log("즐겨찾기 조회 실패: $it") }
     }
 
     /** SPEC R8-8: 내 위치를 요청한다. 결과는 onCurrentLocationInfo로 온다(폴링). */

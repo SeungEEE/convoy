@@ -8,6 +8,9 @@ private const val SAME_PLACE_METERS = 10.0
 
 private const val MAX_RECENT = 5
 
+/** SPEC R11-21: 내비 목적지(경로 도착점)와 같은 장소의 최근 목적지(장소 좌표)는 약 100m 다르다. 이름이 같으면 300m까지 같은 곳으로 본다. */
+private const val SAME_NAME_PLACE_METERS = 300.0
+
 /** 목적지 목록의 한 줄. [current]는 지금 그룹 목적지와 같은 곳(10m 미만)이다. */
 data class PickRow(val destination: Destination, val current: Boolean)
 
@@ -23,13 +26,17 @@ data class DestinationPickerModel(
 
 fun samePlace(a: Destination, b: Destination): Boolean = distanceMeters(a, b) < SAME_PLACE_METERS
 
+/** SPEC R11-21: 주소 보완과 "지금 목적지" 표시용. 10m 미만이거나, 이름이 같고 300m 미만이면 같은 곳이다. */
+private fun sameListedPlace(a: Destination, b: Destination): Boolean =
+    samePlace(a, b) || (a.name == b.name && distanceMeters(a, b) < SAME_NAME_PLACE_METERS)
+
 /** R11-21: 이름이 비어 있거나 좌표가 (0, 0)이면 쓸 수 없는 값(빈 목적지, 비어 있는 즐겨찾기 칸)이다. */
 private fun Destination.usable(): Boolean = name.isNotBlank() && !(latitude == 0.0 && longitude == 0.0)
 
 /**
  * SPEC R11-21.
  * - 내비 목적지 카드: 그룹 목적지가 없거나 10m 이상 다르고, [무시]한 곳(10m 미만)이 아니면 보여 준다.
- *   주소는 최근 목적지 중 이름이 같고 10m 미만인 것이 있으면 그 주소를 쓴다(내비 목적지의 주소는 짧게 온다).
+ *   주소는 최근 목적지 중 이름이 같고 300m 미만인 것이 있으면 그 주소를 쓴다(내비 목적지의 주소는 짧게 온다).
  * - 최근 목적지는 쓸 수 있는 것 최대 5개, 즐겨찾기는 쓸 수 있는 것만. 둘 다 비면 미리 정한 목록.
  */
 fun destinationPickerModel(
@@ -44,10 +51,10 @@ fun destinationPickerModel(
         ?.takeIf { n -> group == null || !samePlace(n, group) }
         ?.takeIf { n -> ignored == null || !samePlace(n, ignored) }
         ?.let { n ->
-            val full = usableRecent.firstOrNull { it.name == n.name && samePlace(it, n) }
+            val full = usableRecent.firstOrNull { it.name == n.name && distanceMeters(it, n) < SAME_NAME_PLACE_METERS }
             if (full != null) n.copy(address = full.address) else n
         }
-    val marks: (Destination) -> PickRow = { PickRow(it, group != null && samePlace(it, group)) }
+    val marks: (Destination) -> PickRow = { PickRow(it, group != null && sameListedPlace(it, group)) }
     val shownRecent = usableRecent.take(MAX_RECENT)
     val shownBookmarks = bookmarks.filter { it.usable() }
     val fallback = shownRecent.isEmpty() && shownBookmarks.isEmpty()

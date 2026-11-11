@@ -29,6 +29,7 @@ import com.car.convoy.domain.UserStatus
 import com.car.convoy.domain.port.ConvoyServer
 import com.car.convoy.ui.AccidentPrompt
 import com.car.convoy.ui.AccidentScreenModel
+import com.car.convoy.ui.DestinationPickerModel
 import com.car.convoy.ui.DriveNavButtons
 import com.car.convoy.ui.FamilyChip
 import com.car.convoy.ui.GroupScreen
@@ -40,6 +41,7 @@ import com.car.convoy.ui.PRESET_DESTINATIONS
 import com.car.convoy.ui.SentFamilyCard
 import com.car.convoy.ui.accidentScreenModel
 import com.car.convoy.ui.groupScreenModel
+import com.car.convoy.ui.destinationPickerModel
 import com.car.convoy.ui.homeScreenModel
 
 private const val TAG = "Convoy"
@@ -71,6 +73,7 @@ class MainActivity : ComponentActivity() {
     private val homeModel = mutableStateOf<HomeScreenModel?>(null)
     private val groupModel = mutableStateOf<GroupScreenModel?>(null)
     private val accidentModel = mutableStateOf<AccidentScreenModel?>(null)
+    private val pickerModel = mutableStateOf<DestinationPickerModel?>(null)
 
     private val roster = GroupRoster(PEOPLE)
     private val family = FamilyController(PEOPLE) // 가족은 그룹과 무관하게 항상 연결(R9-1).
@@ -83,6 +86,13 @@ class MainActivity : ComponentActivity() {
     /** 진행 중인 "목적지로 함께". 없으면 주행이 "없음"(R4-5). SDK 콜백 스레드에서도 읽으므로 @Volatile. */
     @Volatile private var drive: GroupController? = null
     private var driveMembers: List<String> = emptyList()
+
+    // SPEC R11-21: 목적지 출처. 화면이 앞으로 올 때와 그룹 주행 화면에 들어올 때 다시 묻는다.
+    private var naviDestination: Destination? = null
+    private var recentDestinations: List<Destination> = emptyList()
+    private var bookmarkDestinations: List<Destination> = emptyList()
+    private var ignoredSuggestion: Destination? = null
+    private var naviReady = false
 
     private lateinit var navi: NaviHelperAdapter
     private lateinit var vehicle: VehicleSource
@@ -106,6 +116,9 @@ class MainActivity : ComponentActivity() {
             routeFailed = { drive?.onMyRouteFailed(); scheduler.post { refresh() } },
             locationReceived = { loc -> scheduler.post { accident.onLocation(loc) } },
             log = ::log,
+            naviDestination = { d -> scheduler.post { naviDestination = d; refresh() } },
+            recentDestinations = { list -> scheduler.post { recentDestinations = list; refresh() } },
+            bookmarks = { list -> scheduler.post { bookmarkDestinations = list; refresh() } },
         )
         // R8-9: 시연은 가족 없이 시작한다. 가족 상태는 FamilyController에서 읽는다(R9-1). 가족이 없으면 보내지 않는다(R8-5).
         accident = AccidentController(familyServer, navi, scheduler, FamilyState.NONE, ::onAccidentChange, familySource = { family.state })
@@ -129,6 +142,8 @@ class MainActivity : ComponentActivity() {
                             onRetry = { drive?.retryMyRoute(); refresh() },
                             onDemoDepart = { id -> drive?.server?.depart(id); refresh() },
                             onDemoArrive = { id -> drive?.server?.arrive(id); refresh() },
+                            picker = pickerModel.value ?: destinationPickerModel(null, null, null, emptyList(), emptyList()),
+                            onIgnoreSuggestion = { d -> ignoredSuggestion = d; log("내비 목적지 무시 ${d.name}"); refresh() },
                             headerExtra = familyChip,
                             belowMembers = { accidentUi?.sentCard?.let { c -> SentFamilyCard(c, sentTo) } },
                             nav = { DriveNavButtons(onHome = ::goHome, onEnd = ::endDrive) },
@@ -162,8 +177,24 @@ class MainActivity : ComponentActivity() {
         refresh()
         runCatching { vehicle.start() }.onFailure { log("Vehicle 시작 실패: $it") }
         // 초기화 성공 콜백의 스레드는 보장되지 않으므로 메인 스레드로 옮긴다(GroupController는 한 스레드에서만 부른다).
-        navi.start { scheduler.post { handleDemo(intent) } }
+        navi.start { scheduler.post { naviReady = true; queryDestinationSources(); handleDemo(intent) } }
     }
+
+    override fun onResume() {
+        super.onResume()
+        queryDestinationSources()
+    }
+
+    /** R11-21: 내비 목적지를 묻는다. onDestinationChanged가 오지 않아 화면에 돌아올 때마다 묻는다. */
+    private fun queryDestinationSources() {
+        if (!naviReady) return
+        navi.queryDestinationSources()
+        // R11-21: 내비에서 목적지를 정한 직후에는 빈 값이 오므로 3초·6초 뒤에 한 번씩 더 묻는다.
+        requeries.forEach { it.cancel() }
+        requeries = listOf(3_000L, 6_000L).map { delay -> scheduler.schedule(delay) { navi.queryDestinationSources() } }
+    }
+
+    private var requeries: List<Cancellable> = emptyList()
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
@@ -212,11 +243,13 @@ class MainActivity : ComponentActivity() {
         }
         log("목적지로 함께 시작: $driveMembers")
         screen.value = Screen.DRIVE
+        queryDestinationSources()
         refresh()
     }
 
     private fun resume() {
         if (drive != null) screen.value = Screen.DRIVE
+        queryDestinationSources()
         refresh()
     }
 
@@ -330,6 +363,9 @@ class MainActivity : ComponentActivity() {
             )
         }
         if (d == null && screen.value == Screen.DRIVE) screen.value = Screen.HOME
+        pickerModel.value = d?.let {
+            destinationPickerModel(naviDestination, it.session.destination, ignoredSuggestion, recentDestinations, bookmarkDestinations)
+        }
         accidentModel.value = accidentScreenModel(
             checking = accident.checking,
             remainingSeconds = accident.remainingSeconds,
