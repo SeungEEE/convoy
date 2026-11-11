@@ -14,7 +14,6 @@ internal object Palette {
     val Ink = Color(0xFF16202E)
     /** 보조 글자. 이전 값 #5E6978은 회색 바탕 칩에서 4.3:1이었다. */
     val Soft = Color(0xFF56606D)
-    val Line = Color(0xFFE1E5EB)
     val Accent = Color(0xFF1F4E8C)
     val Danger = Color(0xFFB3261E)
     val DangerSoft = Color(0xFFFBE9E7)

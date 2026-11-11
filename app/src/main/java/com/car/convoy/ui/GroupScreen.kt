@@ -5,6 +5,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -14,11 +15,14 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -28,6 +32,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.TextUnit
@@ -39,23 +44,15 @@ import com.car.convoy.domain.GroupMemberState
 // 차량 화면은 160dpi라 1dp = 1px이다. 버튼 높이 80dp 이상, 글자 28sp 이상(R11-20, docs/sdk-findings.md).
 private val SMALL = 28.sp
 private val BODY = 30.sp
-private val Page = Color(0xFFF2F4F7)
-private val Card = Color.White
-private val Ink = Color(0xFF16202E)
-private val Soft = Color(0xFF5E6978)
-private val Line = Color(0xFFE1E5EB)
-private val Accent = Color(0xFF1F4E8C)
-private val Danger = Color(0xFFB3261E)
-private val Demo = Color(0xFFB7791F)
-private val Done = Color(0xFF1D7A46)
+private val Page = Palette.Page
+private val Card = Palette.Card
+private val Ink = Palette.Ink
+private val Soft = Palette.Soft
+private val Accent = Palette.Accent
+private val Danger = Palette.Danger
+private val Demo = Palette.Demo
+private val Done = Palette.Done
 private val CardShape = RoundedCornerShape(16.dp)
-
-private fun stateColor(state: GroupMemberState): Color = when (state) {
-    GroupMemberState.IDLE -> Color(0xFF7D8796)
-    GroupMemberState.REROUTING -> Color(0xFFB7791F)
-    GroupMemberState.DRIVING -> Color(0xFF1F6FD1)
-    GroupMemberState.ARRIVED -> Done
-}
 
 /** SPEC R11-20: 그룹 주행 화면. [model]만 그리고, 누름은 콜백으로 넘긴다. */
 @Composable
@@ -67,36 +64,90 @@ fun GroupScreen(
     onDemoArrive: (String) -> Unit,
     headerExtra: @Composable () -> Unit = {},
     belowMembers: @Composable () -> Unit = {},
+    tabs: @Composable () -> Unit = {},
 ) {
-    Column(
-        modifier = Modifier.fillMaxSize().background(Page).padding(horizontal = 36.dp, vertical = 28.dp),
-        verticalArrangement = Arrangement.spacedBy(24.dp),
-    ) {
-        Header(model, headerExtra)
-        Row(horizontalArrangement = Arrangement.spacedBy(28.dp)) {
-            Column(Modifier.weight(1.2f), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                DestinationCard(model)
-                if (model.finished) FinishedBanner()
-                model.members.forEach { MemberCard(it) }
-                belowMembers()
-            }
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                DestinationPicker(model, onChooseDestination)
-                if (model.showRetry) RetryButton(onRetry)
-                if (model.demoMemberIds.isNotEmpty()) DemoPanel(model, onDemoDepart, onDemoArrive)
-            }
-        }
+    val left: @Composable () -> Unit = {
+        DestinationCard(model)
+        if (model.finished) FinishedBanner()
+        model.members.forEach { MemberCard(it) }
+        belowMembers()
     }
+    val right: @Composable () -> Unit = {
+        DestinationPicker(model, onChooseDestination)
+        if (model.showRetry) RetryButton(onRetry)
+        if (model.demoMemberIds.isNotEmpty()) DemoPanel(model, onDemoDepart, onDemoArrive)
+    }
+    ScreenFrame(
+        header = { single ->
+            HeaderRows(
+                single,
+                lead = { tabs() },
+                trail = {
+                    Chip(model.groupStatusLabel, if (model.finished) Done else Accent, BODY)
+                    Spacer(Modifier.weight(1f))
+                    headerExtra()
+                    Text(model.arrivedSummary, fontSize = 34.sp, fontWeight = FontWeight.Bold, color = Ink)
+                },
+            )
+        },
+        // SPEC R11-20: 1열이면 왼쪽 열(상태·멤버) 다음 오른쪽 열(목적지 고르기 등).
+        singleColumn = { left(); right() },
+        twoColumns = {
+            Column(Modifier.weight(1.2f), verticalArrangement = Arrangement.spacedBy(16.dp)) { left() }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(16.dp)) { right() }
+        },
+    )
 }
 
+/**
+ * SPEC R11-20, R2-5: 화면 루트의 maxWidth가 1,200dp 미만이면 1열로 쌓는다. 넘치면 손 스크롤(자동 스크롤 없음).
+ * 그룹·친구 화면이 같이 쓴다.
+ */
 @Composable
-private fun Header(model: GroupScreenModel, extra: @Composable () -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+internal fun ScreenFrame(
+    header: @Composable (single: Boolean) -> Unit,
+    singleColumn: @Composable () -> Unit,
+    twoColumns: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit,
+) {
+    // BoxWithConstraints는 픽셀 제약이 바뀔 때만 다시 계산하므로, 밀도만 바뀌는 경우(configChanges로 액티비티를 유지할 때)도 key로 다시 잰다.
+    key(LocalDensity.current.density) { BoxWithConstraints(Modifier.fillMaxSize().background(Page)) {
+        val single = isSingleColumn(maxWidth.value)
+        Column(
+            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+                .padding(horizontal = if (single) 24.dp else 36.dp, vertical = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(24.dp),
+        ) {
+            header(single)
+            if (single) {
+                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) { singleColumn() }
+            } else {
+                Row(horizontalArrangement = Arrangement.spacedBy(28.dp)) { twoColumns() }
+            }
+        }
+    } }
+}
+
+/** 머리줄: "Convoy"와 탭([lead]), 그 뒤 상태 표시([trail]). 1열이면 두 줄로 나눈다. */
+@Composable
+internal fun HeaderRows(
+    single: Boolean,
+    lead: @Composable () -> Unit,
+    trail: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit,
+) {
+    val first: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit = {
         Text("Convoy", fontSize = 40.sp, fontWeight = FontWeight.Bold, color = Accent)
-        Chip(model.groupStatusLabel, if (model.finished) Done else Accent, BODY)
-        Spacer(Modifier.weight(1f))
-        extra()
-        Text(model.arrivedSummary, fontSize = 34.sp, fontWeight = FontWeight.Bold, color = Ink)
+        lead()
+    }
+    if (single) {
+        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(20.dp), content = first)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(20.dp), content = trail)
+        }
+    } else {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+            first()
+            trail()
+        }
     }
 }
 
@@ -118,14 +169,14 @@ private fun DestinationCard(model: GroupScreenModel) {
 
 @Composable
 private fun FinishedBanner() {
-    Box(Modifier.fillMaxWidth().background(Color(0xFFDFF2E6), CardShape).padding(26.dp)) {
+    Box(Modifier.fillMaxWidth().background(Palette.DoneFill, CardShape).padding(26.dp)) {
         Text("모두 도착했어요", fontSize = 40.sp, fontWeight = FontWeight.Bold, color = Done)
     }
 }
 
 @Composable
 private fun MemberCard(row: MemberRow) {
-    val color = stateColor(row.state)
+    val color = memberStateColor(row.state)
     Row(
         modifier = Modifier.fillMaxWidth().background(Card, CardShape).padding(horizontal = 24.dp, vertical = 18.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -158,8 +209,8 @@ private fun DestinationPicker(model: GroupScreenModel, onChoose: (Destination) -
                 modifier = Modifier.fillMaxWidth()
                     .heightIn(min = 96.dp)
                     .alpha(if (model.canChooseDestination) 1f else 0.45f)
-                    .background(if (selected) Accent else Color(0xFFE9EFF8), RoundedCornerShape(12.dp))
-                    .border(2.dp, if (selected) Accent else Color(0xFFC5D3E8), RoundedCornerShape(12.dp))
+                    .background(if (selected) Accent else Palette.ButtonFill, RoundedCornerShape(12.dp))
+                    .border(2.dp, if (selected) Accent else Palette.ButtonLine, RoundedCornerShape(12.dp))
                     .clip(RoundedCornerShape(12.dp))
                     .clickable(enabled = model.canChooseDestination) { onChoose(d) }
                     .padding(horizontal = 24.dp, vertical = 12.dp),
