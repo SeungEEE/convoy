@@ -71,7 +71,7 @@ fun AccidentPrompt(model: AccidentScreenModel, onOk: () -> Unit) {
 
 /** SPEC R8-10: 가족에게 보낸 알림 카드. 받는 차가 없어 같은 화면에 보여 준다(시연용 표시). */
 @Composable
-fun SentFamilyCard(card: SentCard) {
+fun SentFamilyCard(card: SentCard, recipient: String? = null) {
     Column(
         modifier = Modifier.fillMaxWidth()
             .background(DangerSoft, RoundedCornerShape(16.dp))
@@ -80,7 +80,8 @@ fun SentFamilyCard(card: SentCard) {
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("가족에게 보낸 알림", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = Danger)
+            // R8-10: 받는 가족의 이름을 보여 준다(작업 24).
+            Text(recipient?.let { "${it}님에게 보낸 알림" } ?: "가족에게 보낸 알림", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = Danger)
             Chip("시연용", Demo, 28.sp)
             Text(card.timeLabel, fontSize = 30.sp, color = Soft, modifier = Modifier.weight(1f), textAlign = TextAlign.End)
         }

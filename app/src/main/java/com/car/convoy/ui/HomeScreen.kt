@@ -55,11 +55,21 @@ fun HomeScreen(
     onDisband: () -> Unit,
     onDemoAccept: () -> Unit,
     onDemoDecline: () -> Unit,
+    onDesignateFamily: (String) -> Unit = {},
+    onReleaseFamily: () -> Unit = {},
+    onDemoFamilyAccept: () -> Unit = {},
+    onDemoFamilyDecline: () -> Unit = {},
     headerExtra: @Composable () -> Unit = {},
+    belowFamily: @Composable () -> Unit = {},
 ) {
+    // R8-10: 사고 알림 카드는 가족 카드 바로 아래에 붙는다(가족은 그룹 주행과 무관, R9-1).
+    val familyCard: @Composable () -> Unit = { FamilyCardView(model.familyCard, onReleaseFamily); belowFamily() }
     val departure: @Composable () -> Unit = { DepartureCard(model, onStartDestination, onResume, onDisband) }
-    val demo: @Composable () -> Unit = { model.pendingInvite?.let { DemoInvitePanel(it, onDemoAccept, onDemoDecline) } }
-    val people: @Composable () -> Unit = { PeopleCard(model, onInvite) }
+    val demo: @Composable () -> Unit = {
+        model.pendingFamily?.let { DemoPanel("${it.name}님이 가족 요청을 받았어요", onDemoFamilyAccept, onDemoFamilyDecline) }
+        model.pendingInvite?.let { DemoPanel("${it.name}님이 그룹 초대를 받았어요", onDemoAccept, onDemoDecline) }
+    }
+    val people: @Composable () -> Unit = { PeopleCard(model, onInvite, onDesignateFamily) }
     ScreenFrame(
         header = { single ->
             HeaderRows(
@@ -72,9 +82,14 @@ fun HomeScreen(
                 },
             )
         },
-        // R4-5: 1열 순서는 (가족,) 함께 출발, 시연용 패널, 연결된 사람.
+        // R4-5: 1열 순서는 가족, 함께 출발, 시연용 패널, 연결된 사람. 가족 카드는 항상 있어 맨 앞에 둔다(R9-5).
         singleColumn = {
-            homeSingleColumnOrder(model).forEach { slot ->
+            familyCard()
+            // 가족 요청만 있으면 homeSingleColumnOrder에 시연 칸이 없으므로 연결된 사람 앞에 끼운다.
+            val order = homeSingleColumnOrder(model).let { o ->
+                if (model.pendingFamily != null && HomeSlot.DEMO !in o) o - HomeSlot.PEOPLE + HomeSlot.DEMO + HomeSlot.PEOPLE else o
+            }
+            order.forEach { slot ->
                 when (slot) {
                     HomeSlot.DEPARTURE -> departure()
                     HomeSlot.DEMO -> demo()
@@ -88,14 +103,42 @@ fun HomeScreen(
                 people()
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+                familyCard()
                 demo()
                 Text(
-                    "그룹은 함께 이동할 때만 꾸려요. 초대와 해산은 정차 중에만 돼요.",
+                    "가족은 항상 연결되고, 그룹은 함께 이동할 때만 꾸려요. 설정은 정차 중에만 돼요.",
                     fontSize = SMALL, color = Soft, lineHeight = 40.sp, modifier = Modifier.padding(horizontal = 6.dp),
                 )
             }
         },
     )
+}
+
+/** R9-5: 가족 카드. 항상 연결(그룹과 무관). 해제·지정 취소는 주행 중에도 된다(R10). */
+@Composable
+private fun FamilyCardView(card: FamilyCard, onRelease: () -> Unit) {
+    val green = Color(0xFF0F5A36)
+    Column(
+        Modifier.fillMaxWidth().background(Card, CardShape).border(1.dp, Color(0xFFE3E6EA), CardShape).padding(28.dp),
+        verticalArrangement = Arrangement.spacedBy(18.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            Text("가족", fontSize = TITLE, fontWeight = FontWeight.ExtraBold, color = Ink)
+            Chip("항상 연결", green, SMALL)
+        }
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+            if (card.name != null) {
+                Box(Modifier.size(80.dp).background(Color(0xFFE3F4EA), CircleShape), contentAlignment = Alignment.Center) {
+                    Text(card.name.take(1), fontSize = TITLE, fontWeight = FontWeight.ExtraBold, color = green)
+                }
+            }
+            Text(card.message, fontSize = BODY, fontWeight = if (card.name != null) FontWeight.Bold else FontWeight.Normal,
+                color = if (card.name != null) Ink else Soft, modifier = Modifier.weight(1f))
+        }
+        if (card.showRelease) SoftButton("가족 해제", enabled = true, onClick = onRelease)
+        if (card.showCancel) SoftButton("지정 취소", enabled = true, onClick = onRelease)
+        if (card.state == FamilyCardState.NONE) Text("아래 연결된 사람에서 [가족으로 설정]을 눌러요", fontSize = SMALL, color = Soft)
+    }
 }
 
 /** R2-1: 내 상태. 주행 중에도 바꿀 수 있다(R10). */
@@ -214,7 +257,7 @@ private fun PrimaryAction(title: String, sub: String, enabled: Boolean, onClick:
 
 /** R4-5 연결된 사람: 오프라인은 보이지 않는다(R2-2). */
 @Composable
-private fun PeopleCard(model: HomeScreenModel, onInvite: (String) -> Unit) {
+private fun PeopleCard(model: HomeScreenModel, onInvite: (String) -> Unit, onDesignateFamily: (String) -> Unit) {
     Column(
         Modifier.fillMaxWidth().background(Card, CardShape).border(1.dp, Color(0xFFE3E6EA), CardShape)
             .padding(horizontal = 28.dp, vertical = 22.dp),
@@ -224,13 +267,13 @@ private fun PeopleCard(model: HomeScreenModel, onInvite: (String) -> Unit) {
             Text("오프라인인 사람은 보이지 않아요", fontSize = SMALL, color = Soft)
         }
         model.people.forEachIndexed { i, p ->
-            PersonLine(p, onInvite, last = i == model.people.lastIndex)
+            PersonLine(p, onInvite, onDesignateFamily, last = i == model.people.lastIndex)
         }
     }
 }
 
 @Composable
-private fun PersonLine(p: PersonRow, onInvite: (String) -> Unit, last: Boolean) {
+private fun PersonLine(p: PersonRow, onInvite: (String) -> Unit, onDesignateFamily: (String) -> Unit, last: Boolean) {
     Row(
         Modifier.fillMaxWidth().padding(vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -246,6 +289,12 @@ private fun PersonLine(p: PersonRow, onInvite: (String) -> Unit, last: Boolean) 
                 Text(p.statusLabel, fontSize = SMALL, color = Soft)
             }
         }
+        // R9-5: 가족 표시. 이 사람이 가족(또는 수락 대기)이면 태그, 아니면 [가족으로 설정].
+        when (p.familyTag) {
+            null -> OutlineButton("가족으로 설정", enabled = p.canDesignateFamily, width = 220.dp) { onDesignateFamily(p.id) }
+            "가족" -> StatusTag(p.familyTag, Color(0xFF0F5A36), Color(0xFFE3F4EA), width = 220.dp)
+            else -> StatusTag(p.familyTag, Color(0xFF8A4B00), Color(0xFFFFF1DC), width = 220.dp)
+        }
         when (p.groupLabel) {
             null -> OutlineButton("그룹에 초대", enabled = p.canInvite) { onInvite(p.id) }
             "수락 대기" -> StatusTag(p.groupLabel, Color(0xFF8A4B00), Color(0xFFFFF1DC))
@@ -256,17 +305,17 @@ private fun PersonLine(p: PersonRow, onInvite: (String) -> Unit, last: Boolean) 
 }
 
 @Composable
-private fun StatusTag(label: String, fg: Color, bg: Color) {
-    Box(Modifier.width(240.dp).heightIn(min = 80.dp).background(bg, ButtonShape), contentAlignment = Alignment.Center) {
+private fun StatusTag(label: String, fg: Color, bg: Color, width: androidx.compose.ui.unit.Dp = 240.dp) {
+    Box(Modifier.width(width).heightIn(min = 80.dp).background(bg, ButtonShape), contentAlignment = Alignment.Center) {
         Text(label, fontSize = SMALL, fontWeight = FontWeight.Bold, color = fg)
     }
 }
 
 /** 테두리 버튼. 비활성은 회색 바탕과 보조 글자색. */
 @Composable
-private fun OutlineButton(label: String, enabled: Boolean, onClick: () -> Unit) {
+private fun OutlineButton(label: String, enabled: Boolean, width: androidx.compose.ui.unit.Dp = 240.dp, onClick: () -> Unit) {
     Box(
-        Modifier.width(240.dp).heightIn(min = 80.dp)
+        Modifier.width(width).heightIn(min = 80.dp)
             .background(if (enabled) Card else Palette.DisabledFill, ButtonShape)
             .border(2.dp, if (enabled) Palette.ButtonLine else Palette.DisabledFill, ButtonShape)
             .clip(ButtonShape)
@@ -287,9 +336,9 @@ private fun SoftButton(label: String, enabled: Boolean, onClick: () -> Unit) {
     ) { Text(label, fontSize = SMALL, fontWeight = FontWeight.Bold, color = if (enabled) Color(0xFF3B4552) else Soft) }
 }
 
-/** R4-5: 가상 인물의 초대 응답. 점선 테두리로 실제 기능과 구분한다. */
+/** R4-5, R9-5: 가상 인물의 초대·가족 요청 응답. 점선 테두리로 실제 기능과 구분한다. */
 @Composable
-private fun DemoInvitePanel(pending: PendingInvite, onAccept: () -> Unit, onDecline: () -> Unit) {
+private fun DemoPanel(message: String, onAccept: () -> Unit, onDecline: () -> Unit) {
     Column(
         Modifier.fillMaxWidth()
             .background(Color(0xFFFFFBF4), RoundedCornerShape(24.dp))
@@ -306,7 +355,7 @@ private fun DemoInvitePanel(pending: PendingInvite, onAccept: () -> Unit, onDecl
             Chip("시연용", Demo, SMALL)
             Text("가상 인물 응답", fontSize = SMALL, color = Color(0xFF3B4552))
         }
-        Text("${pending.name}님이 그룹 초대를 받았어요", fontSize = BODY, fontWeight = FontWeight.Bold, color = Ink)
+        Text(message, fontSize = BODY, fontWeight = FontWeight.Bold, color = Ink)
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             DemoButton("수락", Modifier.weight(1f), onAccept)
             DemoButton("거절", Modifier.weight(1f), onDecline)
