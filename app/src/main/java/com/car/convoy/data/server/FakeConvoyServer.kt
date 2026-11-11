@@ -44,6 +44,12 @@ class FakeConvoyServer(
         }
     }
 
+    /** SPEC R11-22: 버린 세션의 가상 멤버 예약(경로 시작)을 모두 취소한다. */
+    fun cancelPending() {
+        pendingRouteStarts.values.forEach { it.cancel() }
+        pendingRouteStarts.clear()
+    }
+
     /** 시연용: 가상 멤버가 출발한다. */
     fun depart(memberId: String) = virtual(memberId, GroupEvent.GEAR_DEPARTED)
 

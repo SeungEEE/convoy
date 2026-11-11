@@ -77,8 +77,8 @@ class MainActivity : ComponentActivity() {
     /** SDK가 기어를 다시 보내 주지 않으므로 여기서 들고, 주행마다 새 컨트롤러에 넘긴다. */
     private var gear = Gear.UNKNOWN
 
-    /** 진행 중인 "목적지로 함께". 없으면 주행이 "없음"(R4-5). */
-    private var drive: GroupController? = null
+    /** 진행 중인 "목적지로 함께". 없으면 주행이 "없음"(R4-5). SDK 콜백 스레드에서도 읽으므로 @Volatile. */
+    @Volatile private var drive: GroupController? = null
     private var driveMembers: List<String> = emptyList()
 
     private lateinit var navi: NaviHelperAdapter
@@ -97,15 +97,15 @@ class MainActivity : ComponentActivity() {
 
         navi = NaviHelperAdapter(
             applicationContext,
-            routeStarted = { name -> scheduler.post { drive?.onRouteStarted(name) } },
-            destinationArrived = { n, a -> scheduler.post { drive?.onDestinationArrived(n, a) } },
+            routeStarted = { name -> postToDrive { it.onRouteStarted(name) } },
+            destinationArrived = { n, a -> postToDrive { it.onDestinationArrived(n, a) } },
             // requestRoute 예외는 호출 중 동기로 오므로 큐에 넣지 않고 바로 알린다(R11-19). 화면 갱신만 나중에 한다.
             routeFailed = { drive?.onMyRouteFailed(); scheduler.post { refresh() } },
             locationReceived = { loc -> scheduler.post { accident.onLocation(loc) } },
             log = ::log,
         )
-        // R8-9의 가족 상태는 작업 24에서 "가족 없이 시작"으로 바뀐다.
-        accident = AccidentController(familyServer, navi, scheduler, FamilyState.ACTIVE, ::onAccidentChange)
+        // R8-9: 시연은 가족 없이 시작한다. 가족 지정·수락은 작업 24(R9-5). 가족이 없으면 보내지 않는다(R8-5).
+        accident = AccidentController(familyServer, navi, scheduler, FamilyState.NONE, ::onAccidentChange)
         vehicle = VehicleSource(
             applicationContext,
             onGear = { g -> scheduler.post { gear = g; drive?.onGearChanged(g); refresh() } },
@@ -221,6 +221,7 @@ class MainActivity : ComponentActivity() {
     /** R11-20, R11-22 [주행 끝내기]: 세션을 버리고 주행 "없음"으로. 그룹은 남는다. 주행 중에도 된다(R10). */
     private fun endDrive() {
         log("주행 끝내기")
+        drive?.close()
         drive = null
         driveMembers = emptyList()
         screen.value = Screen.HOME
@@ -228,6 +229,15 @@ class MainActivity : ComponentActivity() {
     }
 
     // ---- 그룹 주행(R11) ----
+
+    /**
+     * 내비 이벤트를 들어온 시점의 세션에만 적용한다. 큐에서 기다리는 사이 주행이 끝나거나 새로 시작됐으면 버린다
+     * (끝낸 세션의 이벤트가 새 세션에 섞이지 않게, Codex 리뷰).
+     */
+    private fun postToDrive(action: (GroupController) -> Unit) {
+        val session = drive ?: return
+        scheduler.post { if (drive === session) action(session) }
+    }
 
     private fun chooseDestination(destination: Destination) {
         log("목적지 선택 ${destination.name}")

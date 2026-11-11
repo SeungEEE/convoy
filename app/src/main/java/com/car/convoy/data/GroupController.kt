@@ -97,6 +97,9 @@ class GroupController(
         if (event != null) apply(myId, event)
     }
 
+    /** SPEC R11-22: [주행 끝내기]로 이 세션을 버린다. 가상 멤버에게 예약해 둔 경로 시작을 취소한다. */
+    fun close() = server.cancelPending()
+
     private fun apply(memberId: String, event: GroupEvent) {
         val result = session.onMemberEvent(memberId, event)
         onUpdate(GroupUpdate(memberId, event, result))
