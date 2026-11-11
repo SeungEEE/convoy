@@ -30,9 +30,13 @@ class AccidentController(
     private val onChange: () -> Unit = {},
     /** 보고서에 넣는 실제 시각(R8-10 카드). 30초 측정은 [scheduler]의 단조 시계로 한다. */
     private val wallClock: () -> Long = System::currentTimeMillis,
+    /** 작업 24(R9-1): 가족 상태를 [FamilyController]에서 읽는다. 없으면 이 컨트롤러가 들고 있는 값을 쓴다. */
+    private val familySource: (() -> FamilyState)? = null,
 ) {
-    var familyState: FamilyState = initialFamily
-        private set
+    private var ownFamily: FamilyState = initialFamily
+
+    val familyState: FamilyState
+        get() = familySource?.invoke() ?: ownFamily
 
     /** 지금 "괜찮으세요?"를 묻는 중인가. */
     var checking = false
@@ -77,7 +81,9 @@ class AccidentController(
 
     /** SPEC R9-2: 공유를 끄면 이후 가족에게 아무것도 보내지 않는다. */
     fun disableFamilySharing() {
-        familyState = nextFamilyState(familyState, FamilyEvent.DISABLE)
+        // 가족 상태를 바깥에서 읽을 때 여기서 끄면 끈 것처럼 보이기만 한다. 해제는 FamilyController.release()로 한다.
+        check(familySource == null) { "가족 상태를 FamilyController에서 읽는 중이다. FamilyController.release()를 쓴다" }
+        ownFamily = nextFamilyState(ownFamily, FamilyEvent.DISABLE)
         onChange()
     }
 

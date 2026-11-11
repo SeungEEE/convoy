@@ -1,8 +1,10 @@
 package com.car.convoy.ui
 
+import com.car.convoy.data.FamilyController
 import com.car.convoy.data.GroupRoster
 import com.car.convoy.data.RosterState
 import com.car.convoy.domain.DriverAction
+import com.car.convoy.domain.FamilyState
 import com.car.convoy.domain.Friend
 import com.car.convoy.domain.Gear
 import com.car.convoy.domain.UserStatus
@@ -18,6 +20,10 @@ data class PersonRow(
     /** "수락 대기", "그룹 멤버", 그룹 밖이면 null([그룹에 초대]). */
     val groupLabel: String?,
     val canInvite: Boolean,
+    /** R9-5 [가족으로 설정]을 누를 수 있는가. */
+    val canDesignateFamily: Boolean = false,
+    /** "가족", "가족 수락 대기", 아니면 null. */
+    val familyTag: String? = null,
 )
 
 /** 함께 출발 카드의 멤버 칩. */
@@ -35,7 +41,30 @@ data class HomeScreenModel(
     val showResume: Boolean,
     val canDisband: Boolean,
     val pendingInvite: PendingInvite?,
+    /** R9-5 홈의 가족 카드. */
+    val familyCard: FamilyCard = FamilyCard.NONE,
+    /** R9-5 머리줄 표시: "가족 민수" 또는 "가족 없음". */
+    val familyHeader: String = NO_FAMILY,
+    /** 시연용 패널: 가족 요청을 받은 가상 인물. */
+    val pendingFamily: PendingInvite? = null,
 )
+
+enum class FamilyCardState { NONE, PENDING, ACTIVE }
+
+/** SPEC R9-5: 홈의 가족 카드. */
+data class FamilyCard(
+    val state: FamilyCardState,
+    val name: String?,
+    val message: String,
+    val showCancel: Boolean,
+    val showRelease: Boolean,
+) {
+    companion object {
+        val NONE = FamilyCard(FamilyCardState.NONE, null, "가족을 정하면 사고가 의심될 때 알려요", showCancel = false, showRelease = false)
+    }
+}
+
+const val NO_FAMILY = "가족 없음"
 
 /** 홈 1열에서 쌓는 칸(가족 카드는 작업 24에서 맨 앞에 붙는다). */
 enum class HomeSlot { DEPARTURE, DEMO, PEOPLE }
@@ -52,6 +81,7 @@ fun homeScreenModel(
     roster: GroupRoster,
     driveActive: Boolean,
     gear: Gear,
+    family: FamilyController? = null,
 ): HomeScreenModel {
     val names = people.associate { it.id to it.name }
     val rows = people.filter { visibleInFriendList(it.status) }.map { p ->
@@ -66,6 +96,14 @@ fun homeScreenModel(
                 null -> null
             },
             canInvite = roster.canInviteNow(p.id, gear, driveActive),
+            canDesignateFamily = family?.canDesignate(p.id, gear) ?: false,
+            familyTag = family?.takeIf { it.familyId == p.id }?.let {
+                when (it.state) {
+                    FamilyState.PENDING -> "가족 수락 대기"
+                    FamilyState.ACTIVE -> "가족"
+                    FamilyState.NONE -> null
+                }
+            },
         )
     }
     val chips = listOf(DepartureChip("me", MY_NAME, isLeader = true, pending = false)) +
@@ -80,12 +118,32 @@ fun homeScreenModel(
         showResume = driveActive,
         canDisband = roster.canDisbandNow(gear, driveActive),
         pendingInvite = roster.firstPendingInvite?.let { PendingInvite(it, names[it] ?: it) },
+        familyCard = familyCard(family),
+        familyHeader = familyHeader(family),
+        pendingFamily = family?.takeIf { it.state == FamilyState.PENDING }?.familyId?.let { PendingInvite(it, names[it] ?: it) },
     )
 }
 
-/** SPEC R4-5: 1열 순서. 함께 출발, 시연용 패널(응답할 초대가 있을 때), 연결된 사람. */
+/**
+ * SPEC R4-5: 1열 순서. 함께 출발, 시연용 패널(응답할 초대나 가족 요청이 있을 때), 연결된 사람.
+ * 가족 카드(R9-5)는 항상 있으므로 화면이 이 순서 앞에 둔다.
+ */
 fun homeSingleColumnOrder(model: HomeScreenModel): List<HomeSlot> = buildList {
     add(HomeSlot.DEPARTURE)
-    if (model.pendingInvite != null) add(HomeSlot.DEMO)
+    if (model.pendingInvite != null || model.pendingFamily != null) add(HomeSlot.DEMO)
     add(HomeSlot.PEOPLE)
 }
+
+/** SPEC R9-5: 가족 카드 문구와 버튼. */
+fun familyCard(family: FamilyController?): FamilyCard {
+    val name = family?.familyName
+    return when (family?.state) {
+        FamilyState.PENDING -> FamilyCard(FamilyCardState.PENDING, name, "${name}님 수락 대기", showCancel = true, showRelease = false)
+        FamilyState.ACTIVE -> FamilyCard(FamilyCardState.ACTIVE, name, "$name · 사고 알림 받는 중", showCancel = false, showRelease = true)
+        else -> FamilyCard.NONE
+    }
+}
+
+/** SPEC R9-5: 머리줄 가족 표시. 등록된(ACTIVE) 가족만 이름으로 보여 준다. */
+fun familyHeader(family: FamilyController?): String =
+    family?.takeIf { it.state == FamilyState.ACTIVE }?.familyName?.let { "가족 $it" } ?: NO_FAMILY

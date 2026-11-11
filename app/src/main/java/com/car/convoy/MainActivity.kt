@@ -11,6 +11,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import com.car.convoy.data.AccidentController
 import com.car.convoy.data.Cancellable
+import com.car.convoy.data.FamilyController
 import com.car.convoy.data.FriendController
 import com.car.convoy.data.GroupController
 import com.car.convoy.data.GroupRoster
@@ -59,6 +60,7 @@ private enum class Screen { HOME, DRIVE }
  * 작업 23 홈(R2-5, R4-5)과 그룹 주행(R11-20). 나는 리더이고 실제 SDK를 쓰며, 그룹 멤버는 가상 인물이다(R11-18).
  * adb 시연 명령(녹화·자동 확인용): adb shell am start -n com.car.convoy/.MainActivity --es demo <명령>
  *   홈: invite:p1, accept, decline(첫 수락 대기에 응답), start(목적지로 함께), disband, status:busy
+ *   가족(R9): family:p1, faccept, fdecline, frelease
  *   주행: dest:서울역, depart:p1, arrive:p1, retry, home, end, resume
  *   사고(R8): airbag:on|off, ok, airbaglater(8초 뒤 켜기, R8-11 확인용)
  */
@@ -71,6 +73,7 @@ class MainActivity : ComponentActivity() {
     private val accidentModel = mutableStateOf<AccidentScreenModel?>(null)
 
     private val roster = GroupRoster(PEOPLE)
+    private val family = FamilyController(PEOPLE) // 가족은 그룹과 무관하게 항상 연결(R9-1).
     private val me = FriendController(PEOPLE) // 내 상태(R2-1). 따라가기는 작업 25에서 쓴다.
     private val names = PEOPLE.associate { it.id to it.name } + (ME to MY_NAME)
 
@@ -104,8 +107,8 @@ class MainActivity : ComponentActivity() {
             locationReceived = { loc -> scheduler.post { accident.onLocation(loc) } },
             log = ::log,
         )
-        // R8-9: 시연은 가족 없이 시작한다. 가족 지정·수락은 작업 24(R9-5). 가족이 없으면 보내지 않는다(R8-5).
-        accident = AccidentController(familyServer, navi, scheduler, FamilyState.NONE, ::onAccidentChange)
+        // R8-9: 시연은 가족 없이 시작한다. 가족 상태는 FamilyController에서 읽는다(R9-1). 가족이 없으면 보내지 않는다(R8-5).
+        accident = AccidentController(familyServer, navi, scheduler, FamilyState.NONE, ::onAccidentChange, familySource = { family.state })
         vehicle = VehicleSource(
             applicationContext,
             onGear = { g -> scheduler.post { gear = g; drive?.onGearChanged(g); refresh() } },
@@ -116,7 +119,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             MaterialTheme {
                 val accidentUi = accidentModel.value
-                val familyChip: @Composable () -> Unit = { accidentUi?.let { a -> FamilyChip(a.familyLabel) } }
+                val familyChip: @Composable () -> Unit = { homeModel.value?.let { h -> FamilyChip(h.familyHeader) } }
                 Box {
                     val group = groupModel.value
                     if (screen.value == Screen.DRIVE && group != null) {
@@ -127,7 +130,7 @@ class MainActivity : ComponentActivity() {
                             onDemoDepart = { id -> drive?.server?.depart(id); refresh() },
                             onDemoArrive = { id -> drive?.server?.arrive(id); refresh() },
                             headerExtra = familyChip,
-                            belowMembers = { accidentUi?.sentCard?.let { c -> SentFamilyCard(c) } },
+                            belowMembers = { accidentUi?.sentCard?.let { c -> SentFamilyCard(c, sentTo) } },
                             nav = { DriveNavButtons(onHome = ::goHome, onEnd = ::endDrive) },
                         )
                     } else {
@@ -141,7 +144,12 @@ class MainActivity : ComponentActivity() {
                                 onDisband = ::disband,
                                 onDemoAccept = { respondInvite(true) },
                                 onDemoDecline = { respondInvite(false) },
+                                onDesignateFamily = ::designateFamily,
+                                onReleaseFamily = ::releaseFamily,
+                                onDemoFamilyAccept = { respondFamily(true) },
+                                onDemoFamilyDecline = { respondFamily(false) },
                                 headerExtra = familyChip,
+                                belowFamily = { accidentUi?.sentCard?.let { c -> SentFamilyCard(c, sentTo) } },
                             )
                         }
                     }
@@ -228,6 +236,30 @@ class MainActivity : ComponentActivity() {
         refresh()
     }
 
+    // ---- 가족(R9) ----
+
+    /** 마지막으로 사고 알림을 받은 가족의 이름(R8-10 카드). 보낸 뒤 해제해도 카드에는 받은 사람이 남는다. */
+    private var sentTo: String? = null
+
+    private fun designateFamily(id: String) {
+        val sent = family.designate(id, gear)
+        log("가족 지정 $id ${if (sent) "요청" else "조건 안 맞아 무시"}")
+        refresh()
+    }
+
+    private fun respondFamily(accept: Boolean) {
+        log("가족 응답 ${family.familyId} ${if (accept) "수락" else "거절"}")
+        family.respond(accept)
+        refresh()
+    }
+
+    /** R9-2, R9-5 [가족 해제]·[지정 취소]. 주행 중에도 된다(R10). */
+    private fun releaseFamily() {
+        log("가족 해제·지정 취소 ${family.familyId}")
+        family.release()
+        refresh()
+    }
+
     // ---- 그룹 주행(R11) ----
 
     /**
@@ -257,6 +289,10 @@ class MainActivity : ComponentActivity() {
                 "decline" -> respondInvite(false)
                 "start" -> startDestination()
                 "disband" -> disband()
+                "family" -> designateFamily(arg!!)
+                "faccept" -> respondFamily(true)
+                "fdecline" -> respondFamily(false)
+                "frelease" -> releaseFamily()
                 "status" -> me.setMyStatus(UserStatus.valueOf(arg!!.uppercase()))
                 "home" -> goHome()
                 "resume" -> resume()
@@ -281,7 +317,7 @@ class MainActivity : ComponentActivity() {
 
     private fun refresh() {
         val d = drive
-        homeModel.value = homeScreenModel(PEOPLE, me.myStatus, roster, driveActive = d != null, gear = gear)
+        homeModel.value = homeScreenModel(PEOPLE, me.myStatus, roster, driveActive = d != null, gear = gear, family = family)
         groupModel.value = d?.let {
             groupScreenModel(
                 session = it.session,
@@ -319,6 +355,7 @@ class MainActivity : ComponentActivity() {
             }.onFailure { log("화면 앞으로 가져오기 실패: $it") }
         }
         if (!accident.checking && wasChecking) {
+            if (accident.lastSentReport != null) sentTo = family.familyName
             log(accident.lastSentReport?.let { "가족에게 보냄: ${it.telltales} 위치=${it.location ?: "위치 확인 불가"}" } ?: "확인 끝: 보내지 않음")
         }
         if (accident.checking && !wasChecking) tickCountdown()
