@@ -33,8 +33,9 @@ class FamilyOutOfTableTest {
         assertEquals(FamilyState.NONE, nextFamilyState(FamilyState.NONE, FamilyEvent.DISABLE))
     }
 
+    // SPEC R9 표에 "PENDING + DISABLE → NONE(지정 취소)"이 추가되어 표 밖 조합이 아니게 됐다(작업 24, 사용자 승인).
     @Test
-    fun pending_disable_stays_pending() {
-        assertEquals(FamilyState.PENDING, nextFamilyState(FamilyState.PENDING, FamilyEvent.DISABLE))
+    fun pending_disable_becomes_none() {
+        assertEquals(FamilyState.NONE, nextFamilyState(FamilyState.PENDING, FamilyEvent.DISABLE))
     }
 }
