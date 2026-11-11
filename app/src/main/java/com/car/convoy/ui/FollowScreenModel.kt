@@ -17,6 +17,8 @@ data class FollowScreenModel(
     /** 마지막 요청 뒤 앞차가 움직인 거리("80m"). */
     val movedLabel: String,
     val showRetry: Boolean,
+    /** 앞차가 된 멤버 이름(시안의 "나 → 민수" 그림, 함께 가는 멤버 목록). */
+    val leaderName: String = "",
 )
 
 /** SPEC R12-4: 앞차까지 거리는 내 위치(R8-8 LocationPort)와 앞차 위치 사이의 distanceMeters다. */
@@ -42,5 +44,6 @@ fun followScreenModel(
         rerouteLabel = "${reroutes}번",
         movedLabel = "${Math.round(moved)}m",
         showRetry = failed,
+        leaderName = leaderName,
     )
 }
