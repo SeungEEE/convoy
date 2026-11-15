@@ -74,8 +74,9 @@ adb -s emulator-5554 shell am start -n com.car.convoy/.MainActivity --es demo <�
 | 앱 SDK 수준 | minSdk 28, targetSdk 36 |
 
 ## APK
-- 위치: `apk/<팀명>_Convoy_release.apk` (준비 중, 팀명이 정해지면 추가합니다)
-- GitHub Release: 준비 중
+- 위치: [`apk/KIN_Convoy_release.apk`](apk/KIN_Convoy_release.apk) (서명된 release 버전, 약 31MB)
+- 설치: `adb -s emulator-5554 install -r apk/KIN_Convoy_release.apk`
+  - debug 빌드가 설치되어 있으면 서명이 달라 설치가 실패합니다. 먼저 `adb -s emulator-5554 uninstall com.car.convoy`를 실행합니다.
 
 ## 알려진 한계
 - 다른 차는 모두 가상이고, 실제 여러 차를 잇는 서버는 없습니다.
