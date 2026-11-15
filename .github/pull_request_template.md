@@ -10,7 +10,7 @@ Closes #
 - [ ] 규칙이 바뀌었다면 SPEC.md를 먼저 고친 별도 PR이 머지되었다
 
 ## 수정 범위 확인
-`git diff --stat main...HEAD` 결과를 붙인다.
+`git diff --stat develop...HEAD` 결과를 붙인다.
 
 ```
 ```
