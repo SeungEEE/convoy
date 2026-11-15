@@ -15,3 +15,11 @@
 local.properties
 .kotlin/
 /.idea/
+
+# 서명 키 (저장소에 올리지 않음)
+*.jks
+*.keystore
+keystore.properties
+
+# 개인정보가 들어 있는 공모전 신청서
+docs/*.docx
