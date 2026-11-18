@@ -45,9 +45,9 @@
 
 ## 에뮬레이터
 - AVD `Pleos_Connect_v2.1.0`: API 34, Cold boot 필수(Quick boot면 차량 신호 불가), RAM 4GB, 화면 2560x1440 가로(왼쪽 차량 정보, 오른쪽 앱 영역)
-- Virtual Console: `adb forward tcp:8088 tcp:8088` 후 `http://127.0.0.1:8088/`의 Emulation Controls에서 기어, 방향지시등, 경고등 등을 바꾼다. 위치(GPS)와 차속 카드는 없다
-- **위치가 성남시 수정구 시흥동(37.4127, 127.0947)에 고정**이고 heading은 0이다. `adb emu geo fix`로 바꿔도 NaviHelper 위치는 변하지 않았다
-- 미확인: 에뮬레이터 2대 동시 실행, `onDestinationArrived` 실제 수신(아래 참고: 에뮬레이터에서 유도하지 못함), `addWaypoint`, `updateOccupiedRegion`의 동작
+- Virtual Console: `adb forward tcp:8088 tcp:8088` 후 `http://127.0.0.1:8088/`의 Emulation Controls에서 기어, 방향지시등, 경고등 등을 바꾼다. 위치(GPS) 카드는 없다. 차속은 가속·브레이크 페달로 바뀐다(아래 "화면 나누기·콘솔·위치" 참고)
+- **위치가 성남시 수정구 시흥동(37.4127, 127.0947)에 고정**이고 heading은 0이다. `adb emu geo fix`로 바꿔도 NaviHelper 위치는 변하지 않았다. 원인은 아래 "내비 위치가 고정되는 원인"
+- 미확인: 에뮬레이터 2대 동시 실행, `onDestinationArrived` 실제 수신(아래 참고: 에뮬레이터에서 유도하지 못함). `addWaypoint`와 `updateOccupiedRegion`은 아래 "경유지·주행 정보·내비 화면 요청"에서 확인함
 
 ## Compose (작업 0, 2026-11-06 확인)
 - **Jetpack Compose가 Pleos 에뮬레이터에서 동작한다.** 텍스트 렌더링과 버튼 클릭(상태 변경)을 확인했다
@@ -77,7 +77,7 @@
 - 에뮬레이터 화면은 **왼쪽 차량 패널(기어, 속도, 차량 그림)과 오른쪽 앱 영역**이다. 이 시험에서 내 앱과 내비 앱은 같은 오른쪽 영역을 번갈아 썼고 나란히 놓이지 않았다
 - 내비 앱이 전면일 때 오른쪽 영역에 목적지명, 남은 거리, 도착 시각, 내 위치 마커, 안내 종료 버튼이 표시됐다
 - 확인한 `NaviHelper`와 `navi-data` AAR의 시그니처에서는 지도 위에 다른 차를 그리는 API를 찾지 못했다. SDK 전체에 없다는 확인은 아니다
-- `NaviHelper.getInternalApi().updateOccupiedRegion(Rect)`는 존재하지만 문서가 없고 동작은 확인하지 못했다
+- `NaviHelper.getInternalApi().updateOccupiedRegion(Rect)`는 시스템 앱 전용이다(`SecurityException`, 아래 "경유지·주행 정보·내비 화면 요청")
 
 ### 기획에 미치는 영향 (확인된 것과 추론을 구분한다)
 - **확인됨**: 단일 에뮬레이터에서 `requestRoute`는 `cancelRoute` 없이 새 목적지로 교체된다. 확정까지 수 초 걸린다
@@ -227,3 +227,52 @@ NaviHelper 3.0.5 AAR을 javap로 확인한 API(`getBookmarkInfo`, `getRecentDest
 | 남은 내비 경로 | 이전 확인 때 걸어 둔 "민수 차" 경로가 에뮬레이터를 다시 켠 뒤에도 남아 "내비에서 정한 목적지" 카드에 떴다. 녹화 전에는 내비의 [안내 종료]로 지운다 |
 | 시연 명령 간격 | adb 시연 명령을 1초 안에 연달아 보내면 일부가 빠진다. 녹화는 화면 탭으로 하고, 준비용 명령은 2초 간격을 둔다 |
 | 찍지 못한 장면 | "모두 도착했어요"(내 차 위치 고정으로 내 차 도착을 만들 수 없음) |
+
+## 화면 나누기·콘솔·위치 (2026-11-15, Pleos Emulator 2.1.0)
+| 확인 | 결과 |
+|---|---|
+| 화면 나누기 | 앱 영역 오른쪽 가장자리의 손잡이(⋮)를 왼쪽으로 끌면 앱 영역이 1:1로 나뉜다. 끌 때 앞에 있던 앱이 왼쪽, 바로 전 앱이 오른쪽에 온다. 가운데 구분선을 오른쪽 끝까지 끌면 닫힌다. 좁은 창 1열 레이아웃이 그대로 동작했다 |
+| 나눈 화면에서 앱 위치 | `am start`(adb 시연 명령)를 받거나 사고 확인 화면(R8)이 뜨면 Convoy가 왼쪽 칸으로 옮겨진다. 앱 안에서 누른 버튼으로는 옮겨지지 않는다 |
+| 콘솔 주행 모드 | D 기어에서 가속 페달(`POST /vehicle/controls?accelerator=…&brake=…`)을 주면 왼쪽 계기판이 주행 화면(속도, 도로)으로 바뀐다. 차속은 계기판에만 쓰이고 내비 위치는 움직이지 않는다 |
+| 콘솔 페이지가 값을 덮어씀 | 브라우저에 열어 둔 콘솔 페이지가 자기 상태(기어·경고등·가속)를 계속 다시 보낸다. curl로 보낸 값이 몇 초 안에 페이지 값으로 돌아가는 경우가 있었다. 녹화 때는 페이지에서 직접 바꾸거나, 페이지 값과 같은 방향으로만 보낸다 |
+| 내비 지도 바탕 | 에뮬레이터 내비는 경로선과 안내는 보이지만 지도 바탕(도로·건물)이 비어 보이는 때가 많다. `POIDetailPopup`으로 연 지도에서는 일부 도로가 보였다 |
+
+### 내비 위치가 고정되는 원인
+- 내비 앱은 위치를 FusedLocation이 아니라 GNSS의 NMEA 문장으로 읽는다(`GpsLocationSourceRepositoryImpl.onNmeaMessage`).
+- `adb emu geo fix`를 하면 시스템 GPS와 Pleos FusedLocation 서비스(`ai.pleos.playground.service.location.fused`)는 새 좌표를 정상으로 받는다.
+- 하지만 에뮬레이터 GNSS 드라이버(`android.hardware.gnss-service.ranchu`)가 NMEA 체크섬을 계산하지 않고 항상 `*47`을 붙인다. 내비는 `NMEA checksum mismatch`로 모든 문장을 버린다.
+- 좌표 숫자를 바꿔 체크섬을 0x47에 맞추는 방법도 안 된다. 숫자는 체크섬의 아래 4비트만 바꾸고 위 4비트는 문장 구조로 고정된다(GGA 0x7_, RMC 0x6_). `adb emu geo nmea`로 직접 만든 문장은 드라이버가 형식 오류로 받지 않았다.
+- 그래서 에뮬레이터에서는 내 차 이동, 도착 이벤트, 경유지 도착을 만들 수 없다. Pleos에 제보할 만한 시스템 이미지 문제다.
+
+## 경유지·주행 정보·내비 화면 요청 (2026-11-18, `spike/waypoint-map`, Pleos Emulator 2.1.0)
+`spike/waypoint-map`의 `SpikeProbe`(머지하지 않음)로 시그니처를 javap로 확인한 뒤 호출했다.
+| 확인 | 결과 |
+|---|---|
+| 내비 준비 전 | 부팅 직후 내비 앱을 한 번도 열지 않으면 요청이 모두 무응답이다. 내비 쪽 로그에 `navi not ready`. 내비를 한 번 연 뒤에는 정상 |
+| `requestRouteWithWaypoints(RouteWithWaypointsRequest(RouteInfo, List<RequestWaypointInfo>))` | 서울역 + 경유지 강남역으로 안내가 시작됐다. **`onRouteStarted`의 `name`이 목적지가 아니라 첫 경유지("강남역")였고, distance·duration도 첫 경유지까지의 값이었다(13000m, 3000s)**. R11-17처럼 이름으로 "내 요청의 시작"을 거르는 규칙에 영향이 있다 |
+| 안내 중 `addWaypoint(RequestWaypointInfo(…))` | 경로가 한 번 취소되고(`onRouteCancelled`, `FREE_DRIVE`) 다시 잡혔다(`onWaypointChanged cmd=ADD`, `ROUTE_DRIVE`). 경유지 2개까지 들어갔다. `WaypointIndex.FIRST`로 넣어도 이미 하나 있으면 뒤에 붙었고, `onWaypointChanged`의 index는 넣은 칸과 상관없이 FIRST였다 |
+| `removeWaypoint(WaypointIndex.FIRST)` | 첫 경유지가 빠지고 경로가 다시 잡혔다(`cmd=REMOVE`). 남은 경유지가 첫째가 됐다 |
+| `getWaypointInfo()` → `onWayPointInfo` | 이름, 짧은 주소("이천시 마장면"), 남은 거리·시간이 온다. **좌표는 0.0, 0.0이고 poiId도 비어 있다.** 경유지 비교는 이름이나 요청한 값으로 해야 한다 |
+| `onDrivingInfo` (안내가 시작되면 저절로 옴) | 목적지와 경유지별 남은 거리·시간(예: 목적지 서울역 108000m 10080s, 경유지 판교역 3100m 1020s, 덕평휴게소 44000m 4140s). S09의 "도착 · 남은 시간 · 거리"에 쓸 수 있다 |
+| `getTBTInfo()` → `onTBTInfo` | 회전 안내 목록(TurnType, 거리, 방면). 예: `TURN_RIGHT 700m [대왕판교IC 방면]`. 안내 시작 때 저절로도 온다 |
+| `getRouteStateInfo()` → `onRouteStateInfo` | 안내 모드(ROUTE_GUIDING/SAFE_GUIDING), 경로 옵션, 약관 동의, 정체 요약. **남은 거리·시간은 없다**(그건 `onDrivingInfo`) |
+| `requestTrip(TripRequest(위도, 경도, poiId, 이름, poiSubId))` → `onTripInfo` | 지금 안내를 바꾸지 않고 내 위치에서 그 지점까지의 거리와 예상 시간(초)을 준다(판교역 3211m, eta=979). `summary.routePoints`는 경로 위 지점(출발·경유·목적지·충전소 등)이고 **경로 모양 좌표가 아니다** |
+| `requestNavigationScreen(POIDetailPopup(poiId, poiProvider))` | 내비가 앞으로 와서 그 장소에 핀을 찍은 지도와 상세 창([목적지로] [경유지로])을 띄웠다. poiId가 필요하다. 최근 목적지 중 내비에서 검색한 곳에만 poiId가 있다 |
+| `requestNavigationScreen(OverviewRoute(RouteOverviewShowInfo(ms)))` | 내비 안내 화면의 회전 안내 목록이 펼쳐졌다. 지도 전체 경로 보기는 아니었다 |
+| `getInternalApi().updateOccupiedRegion(Rect)` | `SecurityException: This API is only allowed for system apps`. 일반 앱은 쓸 수 없다 |
+| `requestNavigationScreen` 퍼미션 | `pleos.car.permission.NAVI_CUSTOM_MAP`이 에뮬레이터에서 자동 허용됐다 |
+
+- 정리: 경유지 제안·승인(S11~S15)은 SDK로 내 차에 반영할 수 있다. 반영 결과는 `onWaypointChanged`와 `getWaypointInfo`로 확인한다. 내 차의 남은 시간·거리는 `onDrivingInfo`, 회전 안내는 `onTBTInfo`, 후보 장소까지의 시간은 `requestTrip`으로 얻는다.
+- 다른 차량의 경로 모양과 내비 지도 위 일행 마커는 여전히 SDK로 얻거나 그릴 수 없다. 일행 지도(S01, S09, S16)는 앱 안 지도 SDK와 서버(또는 외부 경로 API)가 필요하다.
+
+## 앱 안 지도와 길찾기 (2026-11-18, `spike/kakao-map`, Pleos Emulator 2.1.0)
+Pleos SDK로는 지도 위에 일행을 그릴 수 없어(위 절), 앱 안 지도로 카카오맵 SDK와 카카오모빌리티 길찾기 REST API를 시험했다. `spike/kakao-map`의 `MapSpikeActivity`(머지하지 않음)로 확인했다.
+| 확인 | 결과 |
+|---|---|
+| SDK와 저장소 | `com.kakao.maps.open:android:2.15.2`(저장소 `https://devrepo.kakao.com/nexus/content/groups/public/`, 2026-09-07 배포). 시그니처는 AAR을 javap로 확인했다. 네이티브 라이브러리는 arm64-v8a·armeabi-v7a가 들어 있고, 에뮬레이터는 arm64-v8a, OpenGL ES 3.0이다 |
+| 콘솔 설정 | Kakao Developers 앱에 Android 패키지 `com.car.convoy`와 키 해시(debug, release 서명 키)를 등록하고 카카오맵 사용을 켰다. 키 값은 `local.properties`(`KAKAO_NATIVE_APP_KEY`, `KAKAO_REST_API_KEY`)에서 `BuildConfig`로 읽고 저장소에 넣지 않는다 |
+| 지도 표시 | `KakaoMapSdk.init` → `MapView.start(MapLifeCycleCallback, KakaoMapReadyCallback)`으로 지도가 정상으로 떴다. 도로·지명·역이 보였다(Pleos 내비 지도 바탕이 비어 보이는 것과 다르다). `MapView.resume()`·`pause()`를 액티비티 생명주기에 맞춰 부른다 |
+| 마커 | `labelManager.layer.addLabel(LabelOptions.from(LatLng).setStyles(LabelStyles.from(LabelStyle.from(Bitmap))))`로 Canvas에 그린 프로필 자리(원 + 이름) 3개와 합류 후보 핀을 찍었다. 카메라는 `CameraUpdateFactory.fitMapPoints(LatLng[], padding)` |
+| 길찾기 | `GET https://apis-navi.kakaomobility.com/v1/directions?origin=경도,위도&destination=경도,위도`, 헤더 `Authorization: KakaoAK <REST 키>`. 시흥동 → 판교역 3350m, 704초, 경로 좌표 64점(`routes[0].sections[].roads[].vertexes`, 경도·위도 번갈아) |
+| 경로선 | `routeLineManager.layer.addRouteLine(RouteLineOptions.from(RouteLineSegment.from(List<LatLng>, RouteLineStyles)))`로 세 멤버의 실제 도로 경로가 합류 후보까지 그려졌다(준희 74점 3.6km 13분, 민수 149점 9.4km 18분, 수진 68점 4.3km 14분) |
+| 주의 | REST 키는 앱에 들어가면 추출될 수 있다. 시연은 이대로 하고, 실서비스에서는 서버가 길찾기를 대신 호출한다. 에뮬레이터 내 위치는 고정이라 내 마커는 움직이지 않는다 |
