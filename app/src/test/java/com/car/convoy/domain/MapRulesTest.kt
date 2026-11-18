@@ -29,6 +29,7 @@ class MapRulesTest {
     @Test fun stale_before_off_route() = assertEquals(MemberRelation.STALE, rel(1650.0, memberOff = 101.0, memberAge = 31))
     @Test fun my_location_stale() = assertEquals(MemberRelation.ME_UNKNOWN, rel(1650.0, myAge = 31))
     @Test fun my_location_off_route() = assertEquals(MemberRelation.ME_UNKNOWN, rel(1650.0, myOff = 101.0))
+    @Test fun same_progress_is_near() = assertEquals(MemberRelation.NEAR, rel(1000.0)) // Codex 리뷰
 
     // ---- detourSeconds ----
     @Test fun detour_180() = assertEquals(180, detourSeconds(900, 1080))
@@ -81,6 +82,26 @@ class MapRulesTest {
 
     @Test fun turn_unknown_has_no_label() = assertNull(turnLabel("TURN_UNKNOWN"))
 
+    // Codex 리뷰: 접미사 묶음은 허용된 값만 인정한다(SPEC turnLabel 표).
+    @Test fun turn_suffix_groups_all_variants() {
+        val groups = mapOf(
+            "TURN_ENTER_IC_" to "고속도로 진입",
+            "TURN_ENTER_UNDER_" to "지하차도 진입",
+            "TURN_AVOID_UNDER_" to "지하차도 옆길",
+            "TURN_ENTER_OVER_" to "고가차도 진입",
+            "TURN_AVOID_OVER_" to "고가차도 옆길",
+        )
+        groups.forEach { (prefix, label) -> listOf("R", "L", "C").forEach { assertEquals(prefix + it, label, turnLabel(prefix + it)) } }
+        listOf("02", "03", "04", "06", "08", "09", "10", "12").forEach {
+            assertEquals(it, "회전교차로", turnLabel("TURN_ENTER_ROUNDABOUT_$it"))
+        }
+    }
+
+    @Test fun turn_invalid_suffix_has_no_label() {
+        listOf("TURN_ENTER_IC_X", "TURN_ENTER_UNDER_", "TURN_AVOID_OVER_RR", "TURN_ENTER_ROUNDABOUT_13", "TURN_ENTER_ROUNDABOUT_05", "TURN_ENTER_ROUNDABOUT_")
+            .forEach { assertNull(it, turnLabel(it)) }
+    }
+
     @Test fun turn_unlisted_has_no_label() = assertNull(turnLabel("TURN_SOMETHING_NEW"))
 
     // ---- formatDistance ----
@@ -88,4 +109,6 @@ class MapRulesTest {
     @Test fun distance_995_is_1km() = assertEquals("1 km", formatDistance(995.0))
     @Test fun distance_1500() = assertEquals("1.5 km", formatDistance(1500.0))
     @Test fun distance_2000() = assertEquals("2 km", formatDistance(2000.0))
+    @Test fun distance_zero() = assertEquals("0 m", formatDistance(0.0))
+    @Test fun distance_negative_is_zero() = assertEquals("0 m", formatDistance(-1000.0)) // Codex 리뷰
 }
