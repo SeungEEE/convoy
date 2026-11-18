@@ -215,7 +215,7 @@
 | `PENDING` | `DISABLE` | `NONE` (지정 취소) |
 
 ### R10. 주행 중 조작 제한
-- R10-1. 설정은 정차(기어 P) 중에만 한다. 주행 중에는 상태 변경, 초대 수락, 따라가기 수락·끊기, 사고 확인 응답, 가족 해제·지정 취소, 주행 끝내기만 가능하다. 화면 이동([홈으로], [진행 중인 주행으로])은 조작이 아니므로 제한하지 않는다.
+- R10-1. 설정은 정차(기어 P) 중에만 한다. 주행 중에는 상태 변경, 초대 수락, 따라가기 수락·끊기, 사고 확인 응답, 가족 해제·지정 취소, 주행 끝내기, 경유지 승인·거절과 제안 취소(R13-11)만 가능하다. 화면 이동([홈으로], [진행 중인 주행으로])은 조작이 아니므로 제한하지 않는다.
 
 `canPerform(action, gear)`
 
@@ -233,6 +233,9 @@
 | 가족 해제·지정 취소 | true | true |
 | 주행 끝내기 | true | true |
 | 그룹 해산 | true | false |
+| 경유지 제안 | true | false |
+| 경유지 승인·거절 | true | true |
+| 경유지 제안 취소 | true | true |
 
 (`NEUTRAL`, `REVERSE`는 `DRIVE`와 같게 취급한다. `UNKNOWN`은 안전을 위해 `DRIVE`와 같게 취급한다.) (제안)
 
@@ -286,7 +289,7 @@ R5~R7의 규칙을 이어 붙인 흐름이다. 새 규칙은 최소로 하고, �
 - R11-14. 목적지 전파: 리더가 목적지를 정하면 `ConvoyServer`가 리더를 포함한 그룹의 각 멤버에게 목적지를 전달하고, 받은 차는 자기 `NaviPort.requestRoute(destination)`를 호출한다. 리더 앱이 다른 차의 내비를 직접 호출하지 않는다. 데모에서는 `FakeConvoyServer`가 가상 멤버의 수신을 흉내 낸다. (제안)
 - R11-15. 그룹 상태는 `ACTIVE`, `FINISHED` 두 가지다. `ACTIVE`에서 멤버 상태가 바뀐 뒤 R11-7 변환으로 `isGroupFinished`가 true가 되면, `FINISH_GROUP`을 한 번 내고 `FINISHED`가 된다. `FINISHED`에서는 목적지 변경(R11-9)을 포함한 모든 이벤트를 무시하고, `FINISH_GROUP`도 다시 내지 않는다. (제안)
 - R11-16. 어댑터의 기어 변환: `GEAR_PARK`→`PARK`, `GEAR_DRIVE`와 `GEAR_1`~`GEAR_9`→`DRIVE`, `GEAR_NEUTRAL`→`NEUTRAL`, `GEAR_REVERSE`→`REVERSE`, `GEAR_UNKNOWN`과 null→`UNKNOWN`. `GEAR_1`~`GEAR_9`는 R7의 `DRIVE`와 같게 취급한다. 따라서 `GEAR_PARK`에서 `GEAR_1`로 바뀌어도 R7-1의 출발(`DEPARTED`)이다. (제안)
-- R11-17. 어댑터는 `onRouteStarted`의 `RouteStartInfo.name`이 마지막으로 요청한 목적지의 `name`과 같을 때만 `ROUTE_STARTED`를 만든다. `name`에 무엇이 오는지는 작업 14에서 에뮬레이터로 확인하고, 목적지 이름이 아니면 이 규칙을 지우고 R11-3 범위로 돌린다. 이름 비교는 공백과 대소문자를 바꾸지 않는 정확한 문자열 일치다. R11-4의 도착 이벤트 비교도 같다. R11-4와 마찬가지로 같은 이름의 다른 목적지로 다시 요청한 경우는 구분하지 못한다. (제안)
+- R11-17. 어댑터는 `onRouteStarted`의 `RouteStartInfo.name`이 마지막으로 요청한 목적지의 `name`과 같을 때만 `ROUTE_STARTED`를 만든다. `name`에 무엇이 오는지는 작업 14에서 에뮬레이터로 확인하고, 목적지 이름이 아니면 이 규칙을 지우고 R11-3 범위로 돌린다. 이름 비교는 공백과 대소문자를 바꾸지 않는 정확한 문자열 일치다. R11-4의 도착 이벤트 비교도 같다. R11-4와 마찬가지로 같은 이름의 다른 목적지로 다시 요청한 경우는 구분하지 못한다. 경유지가 있을 때는 R13-8을 따른다. (제안)
 - R11-18. `FakeConvoyServer`의 가상 멤버는 목적지를 받으면 6초 뒤 `ROUTE_STARTED`를 만든다(실측 5.3~6.7초). 가상 멤버의 출발(`GEAR_DEPARTED`)과 도착(`NAVI_ARRIVED`)은 시연자가 정한 때에 만든다(작업 14에서는 adb 명령, 작업 15 뒤에는 시연용 버튼). 이것은 R11-8의 데모용 대체 이벤트다. 가상 멤버가 `REROUTING` 중에 새 목적지를 받으면, 이전에 예약한 `ROUTE_STARTED`를 취소하고 새 요청 기준으로 다시 6초를 센다. (제안)
 - R11-19. 내 차의 `requestRoute`가 실패하면(SDK 예외) 실패를 화면에 알린다. 이미 진행된 그룹 목적지 변경과 다른 멤버로의 전파는 되돌리지 않는다(다른 멤버의 경로는 각 차가 따로 요청하므로 내 차의 실패와 무관하다). 리더는 실패 표시가 있고 그룹이 `ACTIVE`일 때만 [다시 요청]으로 현재 그룹 목적지를 내 내비에만 다시 요청할 수 있다. 이 재요청은 `shouldSyncDestination`을 거치지 않는다(같은 목적지라 `IGNORE_SAME`이 되므로). 재요청도 실패하면 다시 실패를 알린다. (제안)
 - R11-20. 그룹 주행 화면(작업 15)은 다음을 보여 준다. (제안)
@@ -352,6 +355,81 @@ R5~R7의 규칙을 이어 붙인 흐름이다. 새 규칙은 최소로 하고, �
   - 내 경로 요청이 실패하면 R11-19처럼 실패를 알리고 [다시 요청]을 보여 준다.
 - R12-5. 따라가기는 한 번에 한 명이고, 그룹 주행(R11)과 동시에 하지 않는다(R4-5의 주행은 한 번에 하나). [끊기]와 거절은 주행을 "없음"으로 돌리고 그룹은 남긴다. 따라가기를 하는 동안 다른 그룹 멤버의 상태는 바뀌지 않는다.
 
+### R13. 경유지 제안과 리더 승인 (제안, 2차 PT 범위)
+기획서 기능 ③과 시안 S11~S15를 옮겼다. 시그니처와 동작은 NaviHelper 3.0.5를 에뮬레이터로 확인했다(`docs/sdk-findings.md` "경유지·주행 정보·내비 화면 요청").
+
+- R13-1. 그룹이 `ACTIVE`이고 목적지가 있을 때, 리더를 포함한 멤버 누구나 경유지를 제안할 수 있다. 제안할 장소는 R11-21의 출처(내비에서 정한 목적지, 최근 목적지, 즐겨찾기)에서 고른다. 리더가 직접 제안하면 승인 없이 바로 `APPROVED`가 된다.
+- R13-2. 경유지는 최대 2개다(SDK 제한). 새 경유지는 기존 경유지 뒤에 붙는다(에뮬레이터 실측). 최종 목적지는 바뀌지 않는다.
+- R13-3. "같은 곳"은 R5-3과 같이 좌표 10m 미만이다. 최종 목적지, 이미 반영된 경유지, 대기 중인 제안과 같은 곳이면 제안할 수 없다.
+- R13-4. 제안은 리더가 승인하거나 거절할 때까지 `PENDING`이다. 60초 동안 응답이 없으면 `EXPIRED`가 된다. 응답이 없다고 자동으로 승인하지 않는다. 제안한 사람은 `PENDING` 중에 취소할 수 있다. 대기 중인 제안은 그룹에 하나만 둔다.
+- R13-5. 리더가 승인하면 `ConvoyServer`가 `ARRIVED`가 아닌 멤버(리더 포함)에게 경유지를 전달하고, 받은 차는 자기 `NaviPort.addWaypoint`를 호출한다(R11-14와 같은 방식). 거절, 취소, 만료면 어느 차의 내비도 바뀌지 않는다.
+- R13-6. 멤버마다 반영 상태를 둔다. 경유지를 전달한 직후는 `SENT`, 그 차의 내비에서 `onWaypointChanged(cmdType=ADD)`가 오면 `APPLIED`, `addWaypoint`에서 예외가 나거나 15초 안에 `onWaypointChanged`가 오지 않으면 `FAILED`다. "보냈다"를 "반영됐다"로 표시하지 않는다.
+- R13-7. 그룹 표시는 "반영 n/m"이다. m은 R13-5에서 보낸 멤버 수, n은 `APPLIED` 수다. n<m이면 "2/3 반영 · 수진 대기"처럼 반영되지 않은 멤버 이름을 함께 보여 준다. 일부만 반영돼도 전체 완료로 보여 주지 않는다. `FAILED`인 멤버에게는 리더가 [다시 보내기]를 누를 수 있고, 이미 `APPLIED`인 멤버에게는 다시 보내지 않는다.
+- R13-8. 경유지가 있으면 `onRouteStarted`의 `name`이 최종 목적지가 아니라 첫 경유지 이름으로 온다(실측). 어댑터는 `name`이 마지막으로 요청한 목적지 이름이거나 지금 반영된 경유지 이름 중 하나일 때 `ROUTE_STARTED`를 만든다(R11-17을 넓힌다).
+- R13-9. 안내 중 경유지를 넣으면 내비가 경로를 한 번 취소하고(`onRouteCancelled`) 다시 잡는다(실측). `addWaypoint`를 호출한 뒤 15초 안에 오는 `onRouteCancelled`는 사용자의 안내 종료로 보지 않는다.
+- R13-10. `getWaypointInfo()`의 좌표는 (0, 0)으로 온다(실측). 경유지는 Convoy가 요청한 값(이름, 좌표)으로 기억하고, 내비 값은 이름과 남은 거리·시간에만 쓴다.
+- R13-11. 제안은 장소를 고르는 설정이라 정차 중에만 한다. 승인, 거절, 제안 취소는 응답이라 주행 중에도 된다(초대 수락과 같다). R10 표의 경유지 3행이 이것이다.
+- R13-12. 가상 멤버의 제안은 시연용 패널의 [수진: 덕평휴게소 제안]으로 만든다. 가상 멤버는 경유지를 받으면 4초 뒤 `APPLIED`가 된다. 시연용 [수진 반영 실패]로 일부 실패를 만든다. 내 차의 `addWaypoint`는 실제 SDK 호출이다. 이것은 R11-8과 같은 데모용 대체 이벤트다.
+- R13-13. 경유지 도착(`onWayPointArrived`)과 최종 도착의 분리, 경유지 삭제, 음성 제안은 이 장에 포함하지 않는다. 에뮬레이터는 위치가 고정이라 경유지 도착을 만들 수 없다.
+
+`checkProposal(groupState, hasDestination, waypointCount, distanceToDestination, distanceToNearestWaypoint, hasPending)`. 결과는 위에서부터 차례로 따진다(`NOT_ACTIVE` → `NO_DESTINATION` → `PENDING_EXISTS` → `FULL` → `SAME_AS_DESTINATION` → `ALREADY_WAYPOINT` → `OK`). 거리는 `distanceMeters`이고, 경유지가 없으면 경유지 거리는 없음이다.
+
+| 그룹 | 목적지 | 경유지 수 | 목적지와 거리(m) | 가장 가까운 경유지와 거리(m) | 대기 중 제안 | 결과 |
+|---|---|---|---|---|---|---|
+| `ACTIVE` | 있음 | 0 | 500 | 없음 | 없음 | `OK` |
+| `ACTIVE` | 있음 | 1 | 500 | 500 | 없음 | `OK` |
+| `ACTIVE` | 있음 | 2 | 500 | 500 | 없음 | `FULL` |
+| `ACTIVE` | 없음 | 0 | 없음 | 없음 | 없음 | `NO_DESTINATION` |
+| `FINISHED` | 있음 | 0 | 500 | 없음 | 없음 | `NOT_ACTIVE` |
+| `ACTIVE` | 있음 | 0 | 8.9 | 없음 | 없음 | `SAME_AS_DESTINATION` |
+| `ACTIVE` | 있음 | 1 | 500 | 8.9 | 없음 | `ALREADY_WAYPOINT` |
+| `ACTIVE` | 있음 | 0 | 500 | 없음 | 있음 | `PENDING_EXISTS` |
+
+제안 상태: `PENDING`, `APPROVED`, `REJECTED`, `CANCELLED`, `EXPIRED`
+이벤트: `LEADER_APPROVE`, `LEADER_REJECT`, `PROPOSER_CANCEL`, `TIMEOUT`
+효과: `SEND_WAYPOINT`
+
+`nextProposalState(state, event)` → (다음 상태, 효과)
+
+| 현재 | 이벤트 | 다음 | 효과 |
+|---|---|---|---|
+| `PENDING` | `LEADER_APPROVE` | `APPROVED` | `SEND_WAYPOINT` |
+| `PENDING` | `LEADER_REJECT` | `REJECTED` | 없음 |
+| `PENDING` | `PROPOSER_CANCEL` | `CANCELLED` | 없음 |
+| `PENDING` | `TIMEOUT` | `EXPIRED` | 없음 |
+| `APPROVED` | `LEADER_REJECT` | `APPROVED` | 없음 |
+| `REJECTED` | `LEADER_APPROVE` | `REJECTED` | 없음 |
+| `EXPIRED` | `LEADER_APPROVE` | `EXPIRED` | 없음 (만료 뒤 승인은 반영하지 않는다) |
+| `CANCELLED` | `TIMEOUT` | `CANCELLED` | 없음 |
+
+표에 없는 조합은 상태를 바꾸지 않고 효과도 없다. 리더가 직접 낸 제안(R13-1)은 이 함수를 거치지 않고 바로 `SEND_WAYPOINT`를 낸다.
+
+반영 상태: `SENT`, `APPLIED`, `FAILED`
+이벤트: `WAYPOINT_ADDED`, `ADD_FAILED`, `TIMEOUT`, `RESEND`
+
+`nextApplyState(state, event)`
+
+| 현재 | 이벤트 | 다음 |
+|---|---|---|
+| `SENT` | `WAYPOINT_ADDED` | `APPLIED` |
+| `SENT` | `ADD_FAILED` | `FAILED` |
+| `SENT` | `TIMEOUT` | `FAILED` |
+| `FAILED` | `RESEND` | `SENT` |
+| `APPLIED` | `RESEND` | `APPLIED` (이미 반영된 차에 다시 보내지 않는다) |
+| `FAILED` | `WAYPOINT_ADDED` | `APPLIED` (늦게 온 반영도 반영으로 본다) |
+
+표에 없는 조합은 상태를 바꾸지 않는다.
+
+`applySummary(states)` → (반영 수, 보낸 수, 완료 여부, 대기 수, 실패 수). 완료는 보낸 수가 1 이상이고 모두 `APPLIED`일 때다.
+
+| 멤버 반영 상태 | 반영 | 보냄 | 완료 | 대기 | 실패 |
+|---|---|---|---|---|---|
+| `[APPLIED, APPLIED, APPLIED]` | 3 | 3 | true | 0 | 0 |
+| `[APPLIED, APPLIED, SENT]` | 2 | 3 | false | 1 | 0 |
+| `[APPLIED, FAILED, APPLIED]` | 2 | 3 | false | 0 | 1 |
+| `[SENT]` (혼자) | 0 | 1 | false | 1 | 0 |
+| `[]` | 0 | 0 | false | 0 | 0 |
+
 ## 2장. 구조
 
 ```
@@ -400,6 +478,12 @@ com.car.convoy
 - [x] 작업 24. 가족 지정·수락·지정 취소와 가족 표시 (R9-1, R9-2, R9-5, R8-9, R8-10, R10). (선행: 작업 23)
 - [x] 작업 25. 앞차 따라가기 화면과 내비 연결, `cancelRoute` (R3, R6, R12). (선행: 작업 23)
 - [x] 작업 26. 내비 목적지 가져오기: 내비 목적지·최근·즐겨찾기 (R11-20, R11-21)
+- [ ] 작업 27. `checkProposal` (R13-1~4, 8행)
+- [ ] 작업 28. `nextProposalState` (R13-4·5, 8행)
+- [ ] 작업 29. `nextApplyState`, `applySummary` (R13-6·7, 6행 + 5행)
+- [ ] 작업 30. `canPerform`에 경유지 3행 추가 (R10, R13-11, 6행)
+- [ ] 작업 31. 경유지 어댑터: `NaviPort.addWaypoint`, `onWaypointChanged`, R13-8·9 이벤트 거르기, `FakeConvoyServer`의 제안과 반영(R13-12). 에뮬레이터에서 수동 확인
+- [ ] 작업 32. 경유지 화면: [경유지로 제안], 리더 승인 패널, 대기 표시, 반영 n/m과 [다시 보내기] (R13-1·4·7·11). 지도는 쓰지 않고, 지도 화면은 다음 명세에서 다룬다
 
 ## 4장. P1 (2차 PT 전, 이번 명세에 포함하지 않음)
 방향지시등 공유, 근접·이탈 알림, 휴게·충전 조율(배터리 `getEvBatteryStateOfCharge`), 주행 상태 공유, 친구별 숨기기. P0 테스트가 모두 초록이 된 뒤 같은 방식으로 명세를 추가한다.
