@@ -264,3 +264,15 @@ NaviHelper 3.0.5 AAR을 javap로 확인한 API(`getBookmarkInfo`, `getRecentDest
 
 - 정리: 경유지 제안·승인(S11~S15)은 SDK로 내 차에 반영할 수 있다. 반영 결과는 `onWaypointChanged`와 `getWaypointInfo`로 확인한다. 내 차의 남은 시간·거리는 `onDrivingInfo`, 회전 안내는 `onTBTInfo`, 후보 장소까지의 시간은 `requestTrip`으로 얻는다.
 - 다른 차량의 경로 모양과 내비 지도 위 일행 마커는 여전히 SDK로 얻거나 그릴 수 없다. 일행 지도(S01, S09, S16)는 앱 안 지도 SDK와 서버(또는 외부 경로 API)가 필요하다.
+
+## 앱 안 지도와 길찾기 (2026-11-18, `spike/kakao-map`, Pleos Emulator 2.1.0)
+Pleos SDK로는 지도 위에 일행을 그릴 수 없어(위 절), 앱 안 지도로 카카오맵 SDK와 카카오모빌리티 길찾기 REST API를 시험했다. `spike/kakao-map`의 `MapSpikeActivity`(머지하지 않음)로 확인했다.
+| 확인 | 결과 |
+|---|---|
+| SDK와 저장소 | `com.kakao.maps.open:android:2.15.2`(저장소 `https://devrepo.kakao.com/nexus/content/groups/public/`, 2026-09-07 배포). 시그니처는 AAR을 javap로 확인했다. 네이티브 라이브러리는 arm64-v8a·armeabi-v7a가 들어 있고, 에뮬레이터는 arm64-v8a, OpenGL ES 3.0이다 |
+| 콘솔 설정 | Kakao Developers 앱에 Android 패키지 `com.car.convoy`와 키 해시(debug, release 서명 키)를 등록하고 카카오맵 사용을 켰다. 키 값은 `local.properties`(`KAKAO_NATIVE_APP_KEY`, `KAKAO_REST_API_KEY`)에서 `BuildConfig`로 읽고 저장소에 넣지 않는다 |
+| 지도 표시 | `KakaoMapSdk.init` → `MapView.start(MapLifeCycleCallback, KakaoMapReadyCallback)`으로 지도가 정상으로 떴다. 도로·지명·역이 보였다(Pleos 내비 지도 바탕이 비어 보이는 것과 다르다). `MapView.resume()`·`pause()`를 액티비티 생명주기에 맞춰 부른다 |
+| 마커 | `labelManager.layer.addLabel(LabelOptions.from(LatLng).setStyles(LabelStyles.from(LabelStyle.from(Bitmap))))`로 Canvas에 그린 프로필 자리(원 + 이름) 3개와 합류 후보 핀을 찍었다. 카메라는 `CameraUpdateFactory.fitMapPoints(LatLng[], padding)` |
+| 길찾기 | `GET https://apis-navi.kakaomobility.com/v1/directions?origin=경도,위도&destination=경도,위도`, 헤더 `Authorization: KakaoAK <REST 키>`. 시흥동 → 판교역 3350m, 704초, 경로 좌표 64점(`routes[0].sections[].roads[].vertexes`, 경도·위도 번갈아) |
+| 경로선 | `routeLineManager.layer.addRouteLine(RouteLineOptions.from(RouteLineSegment.from(List<LatLng>, RouteLineStyles)))`로 세 멤버의 실제 도로 경로가 합류 후보까지 그려졌다(준희 74점 3.6km 13분, 민수 149점 9.4km 18분, 수진 68점 4.3km 14분) |
+| 주의 | REST 키는 앱에 들어가면 추출될 수 있다. 시연은 이대로 하고, 실서비스에서는 서버가 길찾기를 대신 호출한다. 에뮬레이터 내 위치는 고정이라 내 마커는 움직이지 않는다 |
