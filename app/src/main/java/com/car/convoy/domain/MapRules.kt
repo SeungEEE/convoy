@@ -50,7 +50,10 @@ fun redrawIntervalSeconds(gear: Gear): Int = if (gear == Gear.PARK) 2 else 10
  */
 fun turnLabel(turnTypeName: String): String? {
     EXACT_TURN_LABELS[turnTypeName]?.let { return it }
-    return PREFIX_TURN_LABELS.firstOrNull { (prefix, _) -> turnTypeName.startsWith(prefix) }?.second
+    // 접미사는 허용된 값만 인정한다(Codex 리뷰). 예: TURN_ENTER_IC_X, TURN_ENTER_ROUNDABOUT_13은 null.
+    return SUFFIX_TURN_LABELS.firstOrNull { (prefix, suffixes, _) ->
+        turnTypeName.startsWith(prefix) && turnTypeName.removePrefix(prefix) in suffixes
+    }?.third
 }
 
 private val EXACT_TURN_LABELS = mapOf(
@@ -75,22 +78,27 @@ private val EXACT_TURN_LABELS = mapOf(
     "TURN_DEVIDE_MERGE" to "갈림길",
 )
 
-/** `*` 묶음(끝이 _R, _L, _C 또는 회전교차로 번호). 정확한 이름이 먼저다. */
-private val PREFIX_TURN_LABELS = listOf(
-    "TURN_ENTER_IC_" to "고속도로 진입",
-    "TURN_ENTER_UNDER_" to "지하차도 진입",
-    "TURN_AVOID_UNDER_" to "지하차도 옆길",
-    "TURN_ENTER_OVER_" to "고가차도 진입",
-    "TURN_AVOID_OVER_" to "고가차도 옆길",
-    "TURN_ENTER_ROUNDABOUT_" to "회전교차로",
+private val SIDES = setOf("R", "L", "C")
+
+/** 회전교차로 번호: NaviHelper 3.0.5 navi-data AAR(javap)에 있는 값. */
+private val ROUNDABOUT_NUMBERS = setOf("02", "03", "04", "06", "08", "09", "10", "12")
+
+/** `*` 묶음(접두사, 허용 접미사, 문구). 정확한 이름이 먼저다. */
+private val SUFFIX_TURN_LABELS = listOf(
+    Triple("TURN_ENTER_IC_", SIDES, "고속도로 진입"),
+    Triple("TURN_ENTER_UNDER_", SIDES, "지하차도 진입"),
+    Triple("TURN_AVOID_UNDER_", SIDES, "지하차도 옆길"),
+    Triple("TURN_ENTER_OVER_", SIDES, "고가차도 진입"),
+    Triple("TURN_AVOID_OVER_", SIDES, "고가차도 옆길"),
+    Triple("TURN_ENTER_ROUNDABOUT_", ROUNDABOUT_NUMBERS, "회전교차로"),
 )
 
 /**
- * SPEC R14-7: 먼저 10m 단위로 반올림한다. 1,000m 미만이면 "700 m",
+ * SPEC R14-7: 0보다 작은 값은 0으로 본다. 먼저 10m 단위로 반올림한다. 1,000m 미만이면 "700 m",
  * 이상이면 km로 소수 첫째 자리까지 반올림하고 ".0"은 뺀다(995m → "1 km"). (제안)
  */
 fun formatDistance(meters: Double): String {
-    val rounded = Math.round(meters / 10.0) * 10
+    val rounded = Math.round(meters.coerceAtLeast(0.0) / 10.0) * 10
     if (rounded < 1000) return "$rounded m"
     val km = BigDecimal(rounded).divide(BigDecimal(1000)).setScale(1, RoundingMode.HALF_UP).stripTrailingZeros()
     return "${km.toPlainString()} km"
