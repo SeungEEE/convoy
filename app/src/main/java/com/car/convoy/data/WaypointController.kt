@@ -55,6 +55,15 @@ class WaypointController(
     val applyStates: Map<String, ApplyState>
         get() = apply.toMap()
 
+    private val failuresByIndex = mutableMapOf<Int, Set<String>>()
+
+    /**
+     * SPEC R13-7: 이전 경유지(번호 0부터)에 반영되지 못한 멤버. 다음 경유지를 보내면 이전 경유지는 다시 보내지 않으므로,
+     * 그 실패를 여기에 남겨 화면에서 사라지지 않게 한다(Codex 리뷰).
+     */
+    val earlierFailures: Map<Int, Set<String>>
+        get() = failuresByIndex.toMap()
+
     /** SPEC R13-7: 반영 n/m. */
     val summary: ApplySummary
         get() = applySummary(apply.values.toList())
@@ -130,10 +139,13 @@ class WaypointController(
     fun isRouteStartedName(name: String?): Boolean =
         name != null && (name == session.destination?.name || approved.any { it.name == name })
 
-    /** SPEC R13-9: 내 차에 addWaypoint를 호출한 시각부터 15초 미만이면 onRouteCancelled는 경유지 변경 때문이다. */
-    fun isExpectedRouteCancel(): Boolean {
-        val at = myLastAddAt ?: return false
-        return scheduler.nowMillis() - at < APPLY_TIMEOUT_MILLIS
+    /**
+     * SPEC R13-9: 내 차에 addWaypoint를 호출한 시각부터 15초 미만이면 onRouteCancelled는 경유지 변경 때문이다.
+     * [at]은 SDK 콜백을 받은 시각이다(메인 스레드 처리 지연과 무관하게, Codex 리뷰).
+     */
+    fun isExpectedRouteCancel(at: Long = scheduler.nowMillis()): Boolean {
+        val addAt = myLastAddAt ?: return false
+        return at - addAt in 0 until APPLY_TIMEOUT_MILLIS
     }
 
     private fun onProposalEvent(event: ProposalEvent) {
@@ -150,6 +162,9 @@ class WaypointController(
 
     /** SPEC R13-5·6: ARRIVED가 아닌 멤버(리더 포함)에게 보내고 각자 SENT로 둔다. 이전 경유지의 반영 상태는 버린다. */
     private fun send(place: Destination) {
+        // 이전 경유지에 실패한 멤버를 남긴다(R13-7). APPLYING이면 제안이 막히므로 여기서 SENT는 없다.
+        val failed = apply.filterValues { it == ApplyState.FAILED }.keys
+        if (approved.isNotEmpty() && failed.isNotEmpty()) failuresByIndex[approved.lastIndex] = failed.toSet()
         approved += place
         applyTimers.values.forEach { it.cancel() }
         applyTimers.clear()

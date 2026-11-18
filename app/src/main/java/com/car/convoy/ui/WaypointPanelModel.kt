@@ -41,6 +41,8 @@ fun waypointPanelModel(
     gear: Gear,
     groupActive: Boolean,
     hasDestination: Boolean,
+    /** 이전 경유지(번호 0부터)에 반영되지 못한 멤버(R13-7). */
+    earlierFailures: Map<Int, Set<String>> = emptyMap(),
 ): WaypointPanelModel {
     fun name(id: String) = names[id] ?: id
     val summary = applySummary(apply.values.toList())
@@ -68,7 +70,10 @@ fun waypointPanelModel(
         }
     }
     return WaypointPanelModel(
-        waypointNames = waypoints.mapIndexed { i, d -> "경유지 ${i + 1} · ${d.name}" },
+        waypointNames = waypoints.mapIndexed { i, d ->
+            val missed = earlierFailures[i].orEmpty().map { name(it) }
+            (listOf("경유지 ${i + 1}", d.name) + missed.map { "$it 미반영" }).joinToString(" · ")
+        },
         request = request,
         applyText = applyText,
         applyComplete = summary.complete,

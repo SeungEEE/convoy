@@ -151,7 +151,11 @@ class MainActivity : ComponentActivity() {
             waypointAdded = { postToDrive { it.onMyWaypointAdded() } },
             // addWaypoint 예외는 호출 중 동기로 온다(R13-6).
             waypointFailed = { drive?.onMyWaypointFailed() },
-            routeCancelled = { scheduler.post { drive?.let { log("경로 취소: ${if (it.isExpectedRouteCancel()) "경유지 변경 중(무시, R13-9)" else "안내 종료"}") } } },
+            // R13-9: 콜백을 받은 시각으로 판정한다(메인 스레드 지연과 무관하게).
+            routeCancelled = {
+                val at = scheduler.nowMillis()
+                scheduler.post { drive?.let { log("경로 취소: ${if (it.isExpectedRouteCancel(at)) "경유지 변경 중(무시, R13-9)" else "안내 종료"}") } }
+            },
         )
         follower = FollowNavigator(navi, scheduler)
         // R8-9: 시연은 가족 없이 시작한다. 가족 상태는 FamilyController에서 읽는다(R9-1). 가족이 없으면 보내지 않는다(R8-5).
@@ -314,6 +318,8 @@ class MainActivity : ComponentActivity() {
                 refresh()
             },
             onWaypointChange = {
+                // 상태가 바뀌면 막힌 제안 안내는 지운다(Codex 리뷰). 새 상태의 안내(만료·거절 등)가 보이게.
+                waypointMessage = null
                 drive?.waypoints?.let { w ->
                     log("경유지 제안=${w.proposal?.let { "${it.proposerId}:${it.place.name}:${it.state}" }} " +
                         "경유지=${w.waypoints.map { it.name }} 반영=${w.applyStates} 요약=${w.summary}")
@@ -541,6 +547,7 @@ class MainActivity : ComponentActivity() {
             val w = it.waypoints
             waypointPanelModel(
                 myId = ME, proposal = w.proposal, waypoints = w.waypoints, apply = w.applyStates, names = names,
+                earlierFailures = w.earlierFailures,
                 gear = gear, groupActive = it.session.status == GroupStatus.ACTIVE, hasDestination = it.session.destination != null,
             ).let { m -> waypointMessage?.let { msg -> m.copy(notice = msg) } ?: m }
         }

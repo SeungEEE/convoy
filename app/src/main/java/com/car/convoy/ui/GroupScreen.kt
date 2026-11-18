@@ -321,7 +321,7 @@ private fun DestinationPicker(
     ) {
         Text("목적지 바꾸기", fontSize = 34.sp, fontWeight = FontWeight.ExtraBold, color = Ink)
         if (!enabled && !model.finished) Text("정차 중에 리더만 바꿀 수 있어요", fontSize = SMALL, color = Soft)
-        picker.suggestion?.let { NaviSuggestionCard(it, enabled, onChoose, onIgnore) }
+        picker.suggestion?.let { NaviSuggestionCard(it, enabled, onChoose, onIgnore, onPropose) }
         // R11-21: [내비에서 검색하기]는 현대차 내비 앱을 띄운다(화면 이동이라 R10 제한 없음). 띄울 수 없으면 안내만.
         Row(
             Modifier.fillMaxWidth().heightIn(min = 88.dp)
@@ -349,7 +349,11 @@ private fun DestinationPicker(
         if (picker.bookmarks.isNotEmpty()) {
             Text("즐겨찾기", fontSize = SMALL, fontWeight = FontWeight.Bold, color = Soft)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                picker.bookmarks.forEach { BookmarkButton(it, enabled, onChoose) }
+                picker.bookmarks.forEach { row ->
+                    BookmarkButton(row, enabled, onChoose)
+                    // SPEC R13-1: 즐겨찾기도 경유지 제안 출처다(Codex 리뷰). 지금 목적지인 곳은 빼고 붙인다.
+                    if (onPropose != null && !row.current) WaypointPill { onPropose(row.destination) }
+                }
             }
         }
     }
@@ -376,7 +380,13 @@ private fun BookmarkButton(row: PickRow, enabled: Boolean, onChoose: (Destinatio
 
 /** R11-21: 리더가 내비에서 정한 목적지를 그룹과 함께할지 묻는다. 두 버튼 모두 R10 "그룹 목적지 변경"의 제한을 받는다(주행 중 잠김). */
 @Composable
-private fun NaviSuggestionCard(d: Destination, enabled: Boolean, onChoose: (Destination) -> Unit, onIgnore: (Destination) -> Unit) {
+private fun NaviSuggestionCard(
+    d: Destination,
+    enabled: Boolean,
+    onChoose: (Destination) -> Unit,
+    onIgnore: (Destination) -> Unit,
+    onPropose: ((Destination) -> Unit)? = null,
+) {
     Column(
         // 시안의 짙은 카드.
         Modifier.fillMaxWidth().background(Palette.Night, RoundedCornerShape(24.dp)).padding(26.dp),
@@ -401,6 +411,16 @@ private fun NaviSuggestionCard(d: Destination, enabled: Boolean, onChoose: (Dest
                     .clickable(enabled = enabled) { onIgnore(d) },
                 contentAlignment = Alignment.Center,
             ) { Text("무시", fontSize = BODY, fontWeight = FontWeight.Bold, color = if (enabled) Color.White else Palette.OnNightSoft) }
+        }
+        // SPEC R13-1: 내비에서 정한 곳을 목적지 대신 경유지로 넣는다(Codex 리뷰). 정차 중에만 보인다(R13-11).
+        if (onPropose != null) {
+            Box(
+                Modifier.fillMaxWidth().heightIn(min = 84.dp)
+                    .border(2.dp, Color.White, RoundedCornerShape(16.dp))
+                    .clip(RoundedCornerShape(16.dp))
+                    .clickable { onPropose(d) },
+                contentAlignment = Alignment.Center,
+            ) { Text("경유지로 추가", fontSize = BODY, fontWeight = FontWeight.Bold, color = Color.White) }
         }
     }
 }

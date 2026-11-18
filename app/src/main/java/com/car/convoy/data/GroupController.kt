@@ -5,6 +5,7 @@ import com.car.convoy.data.server.FakeConvoyServer
 import com.car.convoy.domain.Destination
 import com.car.convoy.domain.Gear
 import com.car.convoy.domain.GearEvent
+import com.car.convoy.domain.GroupEffect
 import com.car.convoy.domain.GroupEvent
 import com.car.convoy.domain.GroupSession
 import com.car.convoy.domain.GroupStatus
@@ -92,7 +93,7 @@ class GroupController(
     fun onMyWaypointFailed() = waypoints.onAddFailed(myId)
 
     /** SPEC R13-9: 내 내비의 경로 취소가 경유지 변경 때문인지(그렇다면 안내 종료로 보지 않는다). */
-    fun isExpectedRouteCancel(): Boolean = waypoints.isExpectedRouteCancel()
+    fun isExpectedRouteCancel(at: Long): Boolean = waypoints.isExpectedRouteCancel(at)
 
     /** SPEC R11-4: 마지막 요청과 이름·주소가 같은 도착만 받는다. */
     fun onDestinationArrived(name: String?, address: String?) {
@@ -122,6 +123,11 @@ class GroupController(
 
     private fun apply(memberId: String, event: GroupEvent) {
         val result = session.onMemberEvent(memberId, event)
+        // SPEC R13-14: 전원 도착(FINISHED)도 세션 종료다. 대기 중 제안과 가상 멤버 예약을 정리한다(Codex 리뷰).
+        if (result.groupEffect == GroupEffect.FINISH_GROUP) {
+            server.cancelPending()
+            waypoints.close()
+        }
         onUpdate(GroupUpdate(memberId, event, result))
     }
 }
