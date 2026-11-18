@@ -1,7 +1,6 @@
 package com.car.convoy.data
 
 import com.car.convoy.data.navi.isArrivalForRequest
-import com.car.convoy.data.navi.isRouteStartedForRequest
 import com.car.convoy.data.server.FakeConvoyServer
 import com.car.convoy.domain.Destination
 import com.car.convoy.domain.Gear
@@ -26,10 +25,15 @@ class GroupController(
     private val myNavi: NaviPort,
     scheduler: Scheduler,
     initialGear: Gear = Gear.UNKNOWN,
+    /** SPEC R13: 경유지 제안·반영 상태가 바뀌었다(화면 갱신용). 마지막 람다 자리는 [onUpdate]다. */
+    onWaypointChange: () -> Unit = {},
     private val onUpdate: (GroupUpdate) -> Unit = {},
 ) {
-    val server = FakeConvoyServer(myId, myNavi, scheduler, ::apply)
+    val server = FakeConvoyServer(myId, myNavi, scheduler, onVirtualWaypoint = ::onVirtualWaypoint, onVirtualEvent = ::apply)
     val session = GroupSession(myId, memberIds, server)
+
+    /** SPEC R13: 이 세션의 경유지 제안·승인·반영. */
+    val waypoints = WaypointController(myId, session, server, scheduler, onWaypointChange)
 
     // 작업 23: 주행마다 새로 만들므로, SDK가 다시 보내 주지 않는 현재 기어를 넘겨받는다.
     private var lastGear = initialGear
@@ -76,10 +80,19 @@ class GroupController(
         myNavi.requestRoute(destination)
     }
 
-    /** SPEC R11-17: 마지막 요청과 이름이 같은 경로 시작만 받는다. */
+    /** SPEC R11-17, R13-8: 마지막 목적지나 요청한 경유지와 이름이 같은 경로 시작만 받는다. */
     fun onRouteStarted(name: String?) {
-        if (isRouteStartedForRequest(name, session.destination)) apply(myId, GroupEvent.ROUTE_STARTED)
+        if (waypoints.isRouteStartedName(name)) apply(myId, GroupEvent.ROUTE_STARTED)
     }
+
+    /** SPEC R13-6: 내 내비에서 경유지가 들어갔다(onWaypointChanged ADD). */
+    fun onMyWaypointAdded() = waypoints.onWaypointAdded(myId)
+
+    /** SPEC R13-6: 내 내비의 addWaypoint가 예외로 실패했다. 호출 중 동기로 오므로 큐에 넣지 않고 바로 부른다. */
+    fun onMyWaypointFailed() = waypoints.onAddFailed(myId)
+
+    /** SPEC R13-9: 내 내비의 경로 취소가 경유지 변경 때문인지(그렇다면 안내 종료로 보지 않는다). */
+    fun isExpectedRouteCancel(): Boolean = waypoints.isExpectedRouteCancel()
 
     /** SPEC R11-4: 마지막 요청과 이름·주소가 같은 도착만 받는다. */
     fun onDestinationArrived(name: String?, address: String?) {
@@ -97,8 +110,15 @@ class GroupController(
         if (event != null) apply(myId, event)
     }
 
-    /** SPEC R11-22: [주행 끝내기]로 이 세션을 버린다. 가상 멤버에게 예약해 둔 경로 시작을 취소한다. */
-    fun close() = server.cancelPending()
+    /** SPEC R11-22, R13-14: [주행 끝내기]로 이 세션을 버린다. 가상 멤버 예약과 경유지 제안·반영을 정리한다. */
+    fun close() {
+        server.cancelPending()
+        waypoints.close()
+    }
+
+    private fun onVirtualWaypoint(memberId: String, applied: Boolean) {
+        if (applied) waypoints.onWaypointAdded(memberId) else waypoints.onAddFailed(memberId)
+    }
 
     private fun apply(memberId: String, event: GroupEvent) {
         val result = session.onMemberEvent(memberId, event)
