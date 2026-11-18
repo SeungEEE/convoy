@@ -53,6 +53,10 @@ class GroupSession(
 
     fun memberState(memberId: String): GroupMemberState = states.getValue(memberId)
 
+    /** 리더를 포함한 멤버 ID(R11-11). 경유지를 보낼 대상(R13-5)을 고를 때 쓴다. */
+    val memberIds: List<String>
+        get() = states.keys.toList()
+
     /**
      * SPEC R5, R11-1, R11-9, R11-12, R11-14: 리더가 목적지를 바꾸면 SYNC일 때만
      * 리더를 포함한 모든 멤버에게 서버로 목적지를 보내고, 멤버 상태를 표대로 바꾼다.
