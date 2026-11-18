@@ -69,14 +69,17 @@ fun nextApplyState(state: ApplyState, event: ApplyEvent): ApplyState = when {
     else -> state
 }
 
-/** SPEC R13-7: "반영 n/m"과 처리 중·실패 수. 완료는 보낸 수가 1 이상이고 모두 APPLIED일 때다. */
-data class ApplySummary(val applied: Int, val sent: Int, val complete: Boolean, val waiting: Int, val failed: Int)
+/**
+ * SPEC R13-7: "반영 n/m"과 처리 중·실패 수. n은 [applied], m은 [targets](R13-5에서 경유지를 보낸 멤버 수).
+ * [waiting]은 SENT(처리 중), [failed]는 FAILED 수다. 완료는 [targets]가 1 이상이고 모두 APPLIED일 때다.
+ */
+data class ApplySummary(val applied: Int, val targets: Int, val complete: Boolean, val waiting: Int, val failed: Int)
 
 fun applySummary(states: List<ApplyState>): ApplySummary {
     val applied = states.count { it == ApplyState.APPLIED }
     return ApplySummary(
         applied = applied,
-        sent = states.size,
+        targets = states.size,
         complete = states.isNotEmpty() && applied == states.size,
         waiting = states.count { it == ApplyState.SENT },
         failed = states.count { it == ApplyState.FAILED },
