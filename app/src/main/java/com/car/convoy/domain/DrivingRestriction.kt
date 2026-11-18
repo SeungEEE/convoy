@@ -24,11 +24,21 @@ enum class DriverAction {
 
     /** R10 표의 "가족 해제·지정 취소"(R9-2, R9-5). 언제든 끌 수 있어 주행 중에도 된다. */
     DISABLE_FAMILY,
+
+    /** R10 표의 "경유지 제안"(R13-11). 장소를 고르는 설정이라 정차 중에만 한다. */
+    PROPOSE_WAYPOINT,
+
+    /** R10 표의 "경유지 승인·거절"(R13-11). 응답이라 주행 중에도 된다. */
+    RESPOND_WAYPOINT_PROPOSAL,
+
+    /** R10 표의 "경유지 제안 취소"(R13-11). 응답이라 주행 중에도 된다. */
+    CANCEL_WAYPOINT_PROPOSAL,
 }
 
 /**
  * SPEC R10-1: 설정은 정차(PARK) 중에만 한다.
- * 주행 중에는 상태 변경, 초대 수락, 따라가기 수락·끊기, 사고 확인 응답, 가족 해제·지정 취소, 주행 끝내기만 가능하다.
+ * 주행 중에는 상태 변경, 초대 수락, 따라가기 수락·끊기, 사고 확인 응답, 가족 해제·지정 취소, 주행 끝내기,
+ * 경유지 승인·거절과 제안 취소만 가능하다.
  * PARK이 아닌 기어(NEUTRAL, REVERSE, UNKNOWN 포함)는 모두 주행 중으로 본다.
  */
 fun canPerform(action: DriverAction, gear: Gear): Boolean =
@@ -41,4 +51,6 @@ private val ALLOWED_WHILE_DRIVING = setOf(
     DriverAction.RESPOND_ACCIDENT_CHECK,
     DriverAction.END_DRIVE,
     DriverAction.DISABLE_FAMILY,
+    DriverAction.RESPOND_WAYPOINT_PROPOSAL,
+    DriverAction.CANCEL_WAYPOINT_PROPOSAL,
 )

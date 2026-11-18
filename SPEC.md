@@ -483,10 +483,10 @@ com.car.convoy
 - [x] 작업 24. 가족 지정·수락·지정 취소와 가족 표시 (R9-1, R9-2, R9-5, R8-9, R8-10, R10). (선행: 작업 23)
 - [x] 작업 25. 앞차 따라가기 화면과 내비 연결, `cancelRoute` (R3, R6, R12). (선행: 작업 23)
 - [x] 작업 26. 내비 목적지 가져오기: 내비 목적지·최근·즐겨찾기 (R11-20, R11-21)
-- [ ] 작업 27. `checkProposal` (R13-1~4, 11행)
-- [ ] 작업 28. `nextProposalState` (R13-4·5·14, 9행)
-- [ ] 작업 29. `nextApplyState`, `applySummary` (R13-6·7, 6행 + 5행)
-- [ ] 작업 30. `canPerform`에 경유지 3행 추가 (R10, R13-11, 6행)
+- [x] 작업 27. `checkProposal` (R13-1~4, 11행)
+- [x] 작업 28. `nextProposalState` (R13-4·5·14, 9행)
+- [x] 작업 29. `nextApplyState`, `applySummary` (R13-6·7, 6행 + 5행)
+- [x] 작업 30. `canPerform`에 경유지 3행 추가 (R10, R13-11, 6행)
 - [ ] 작업 31. 경유지 어댑터: `NaviPort.addWaypoint`, `onWaypointChanged`, R13-8·9 이벤트 거르기, `FakeConvoyServer`의 제안과 반영(R13-12), 세션 종료 처리(R13-14). 에뮬레이터에서 수동 확인
 - [ ] 작업 32. 경유지 화면: [경유지로 제안], 리더 승인 패널, 대기 표시, 반영 n/m과 [다시 보내기] (R13-1·4·7·11). 지도는 쓰지 않고, 지도 화면은 다음 명세에서 다룬다
 
