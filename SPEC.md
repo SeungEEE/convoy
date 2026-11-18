@@ -487,7 +487,7 @@ com.car.convoy
 - [x] 작업 28. `nextProposalState` (R13-4·5·14, 9행)
 - [x] 작업 29. `nextApplyState`, `applySummary` (R13-6·7, 6행 + 5행)
 - [x] 작업 30. `canPerform`에 경유지 3행 추가 (R10, R13-11, 6행)
-- [ ] 작업 31. 경유지 어댑터: `NaviPort.addWaypoint`, `onWaypointChanged`, R13-8·9 이벤트 거르기, `FakeConvoyServer`의 제안과 반영(R13-12), 세션 종료 처리(R13-14). 에뮬레이터에서 수동 확인
+- [x] 작업 31. 경유지 어댑터: `NaviPort.addWaypoint`, `onWaypointChanged`, R13-8·9 이벤트 거르기, `FakeConvoyServer`의 제안과 반영(R13-12), 세션 종료 처리(R13-14). 에뮬레이터에서 수동 확인
 - [ ] 작업 32. 경유지 화면: [경유지로 제안], 리더 승인 패널, 대기 표시, 반영 n/m과 [다시 보내기] (R13-1·4·7·11). 지도는 쓰지 않고, 지도 화면은 다음 명세에서 다룬다
 
 ## 4장. P1 (2차 PT 전, 이번 명세에 포함하지 않음)

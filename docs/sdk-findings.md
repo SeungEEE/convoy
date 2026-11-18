@@ -276,3 +276,15 @@ Pleos SDK로는 지도 위에 일행을 그릴 수 없어(위 절), 앱 안 지�
 | 길찾기 | `GET https://apis-navi.kakaomobility.com/v1/directions?origin=경도,위도&destination=경도,위도`, 헤더 `Authorization: KakaoAK <REST 키>`. 시흥동 → 판교역 3350m, 704초, 경로 좌표 64점(`routes[0].sections[].roads[].vertexes`, 경도·위도 번갈아) |
 | 경로선 | `routeLineManager.layer.addRouteLine(RouteLineOptions.from(RouteLineSegment.from(List<LatLng>, RouteLineStyles)))`로 세 멤버의 실제 도로 경로가 합류 후보까지 그려졌다(준희 74점 3.6km 13분, 민수 149점 9.4km 18분, 수진 68점 4.3km 14분) |
 | 주의 | REST 키는 앱에 들어가면 추출될 수 있다. 시연은 이대로 하고, 실서비스에서는 서버가 길찾기를 대신 호출한다. 에뮬레이터 내 위치는 고정이라 내 마커는 움직이지 않는다 |
+
+## 작업 31 경유지 어댑터 확인 (2026-11-18, `feat/waypoint-adapter`, Pleos Emulator 2.1.0)
+그룹(나·민수·수진)으로 서울역 안내 중에 adb 시연 명령(`wpropose`, `wapprove`, `wfail`, `wresend`, `end`)으로 확인했다. 시작 전에 내비 앱을 한 번 열었다.
+| 확인 | 결과 |
+|---|---|
+| 제안과 대기 | 수진 제안 → `PENDING`. 대기 중 민수 제안은 `PENDING_EXISTS` |
+| 승인과 내 차 반영 | [승인] → 세 명 `SENT`, 내 차 `addWaypoint name=[덕평휴게소]` → `onRouteCancelled`("경유지 변경 중", 무시, R13-9) → 가상 멤버 4초 뒤 `APPLIED` → 내 내비 `onWaypointChanged cmd=ADD` → 3/3 완료 |
+| 일부 실패와 다시 보내기 | 수진 실패 설정 후 내가 판교역 제안(바로 보냄) → 민수 `APPLIED`, 수진 `FAILED`, 나 `APPLIED` → 2/3, 실패 1. [다시 보내기] → 수진만 다시 `SENT` → 3/3 |
+| 개수 제한 | 경유지 2개 뒤 제안은 `FULL` |
+| 주행 끝내기 | 반영 상태가 비워졌다(R13-14). 대기 중 제안 취소는 단위 테스트로 확인 |
+| 경로 시작 이벤트 | 안내 중 `addWaypoint` 뒤에는 `onRouteStarted`가 따로 오지 않았고 `onWaypointChanged`(routeStartInfo 포함)만 왔다. R13-8의 이름 비교는 `requestRouteWithWaypoints`처럼 경로를 새로 잡을 때 쓰인다 |
+| 확인 못 함 | 경유지 도착(`onWayPointArrived`, 위치 고정), 실차 |
