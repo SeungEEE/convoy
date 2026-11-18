@@ -194,6 +194,61 @@ class WaypointControllerTest {
         assertFalse(c.isRouteStartedName(null))
     }
 
+    // ---- Codex 리뷰 반영 ----
+    @Test fun earlier_failure_is_kept_when_next_waypoint_is_sent() {
+        c.propose("me", restArea)
+        c.onWaypointAdded("me"); c.onWaypointAdded("p1")
+        scheduler.advanceBy(15_000) // p3 FAILED
+        c.propose("me", gasStation)
+        // 다음 경유지는 모두에게 보낸다(이전 경유지는 다시 보내지 않으니 순서는 섞이지 않는다, R13-7).
+        assertEquals(setOf("me", "p1", "p3"), c.applyStates.keys)
+        // 이전 경유지의 실패는 사라지지 않는다.
+        assertEquals(mapOf(0 to setOf("p3")), c.earlierFailures)
+    }
+
+    @Test fun resend_success_clears_nothing_from_history_until_next_send() {
+        c.propose("me", restArea)
+        listOf("me", "p1", "p3").forEach { c.onWaypointAdded(it) }
+        c.propose("me", gasStation)
+        assertEquals(emptyMap<Int, Set<String>>(), c.earlierFailures)
+    }
+
+    @Test fun cancel_judged_at_callback_time() {
+        c.propose("me", restArea) // 0ms에 내 차 addWaypoint
+        scheduler.advanceBy(20_000)
+        // SDK 콜백은 14.9초에 왔지만 메인 스레드 처리가 늦었다.
+        assertTrue(c.isExpectedRouteCancel(at = 14_900))
+        assertFalse(c.isExpectedRouteCancel(at = 15_000))
+    }
+
+    @Test fun pending_expires_exactly_at_60s_after_creation_time() {
+        scheduler.advanceBy(5_000)
+        c.propose("p3", restArea)
+        scheduler.advanceBy(59_999)
+        assertEquals(ProposalState.PENDING, c.proposal!!.state)
+        scheduler.advanceBy(1)
+        assertEquals(ProposalState.EXPIRED, c.proposal!!.state)
+    }
+
+    @Test fun close_right_after_approve_drops_everything() {
+        c.propose("p3", restArea); c.approve()
+        c.close()
+        scheduler.advanceBy(15_000)
+        assertTrue(c.applyStates.isEmpty())
+        assertEquals(ProposalState.APPROVED, c.proposal!!.state)
+    }
+
+    @Test fun resend_restarts_15s_timer() {
+        c.propose("me", restArea)
+        c.onWaypointAdded("me"); c.onWaypointAdded("p1")
+        scheduler.advanceBy(15_000)
+        c.resend()
+        scheduler.advanceBy(14_999)
+        assertEquals(ApplyState.SENT, c.applyStates["p3"])
+        scheduler.advanceBy(1)
+        assertEquals(ApplyState.FAILED, c.applyStates["p3"])
+    }
+
     @Test fun cancel_within_15s_of_my_add_is_expected() {
         assertFalse(c.isExpectedRouteCancel())
         c.propose("me", restArea)

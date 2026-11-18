@@ -84,6 +84,16 @@ class WaypointPanelModelTest {
         assertEquals("1/3 반영 · 준희 처리 중 · 민수 실패", m.applyText)
     }
 
+    @Test fun earlier_failure_stays_on_waypoint_line() {
+        val m = waypointPanelModel(
+            "me", null, listOf(rest, pangyo),
+            mapOf("me" to ApplyState.APPLIED, "p1" to ApplyState.APPLIED, "p3" to ApplyState.APPLIED),
+            names, Gear.PARK, groupActive = true, hasDestination = true,
+            earlierFailures = mapOf(0 to setOf("p3")),
+        )
+        assertEquals(listOf("경유지 1 · 덕평휴게소 · 수진 미반영", "경유지 2 · 판교역"), m.waypointNames)
+    }
+
     @Test fun ended_proposal_notices() {
         assertEquals("수진님의 요청을 거절했어요", model(proposal = WaypointProposal("p3", rest, ProposalState.REJECTED)).notice)
         assertEquals("응답이 없어 수진님의 요청이 만료됐어요", model(proposal = WaypointProposal("p3", rest, ProposalState.EXPIRED)).notice)
