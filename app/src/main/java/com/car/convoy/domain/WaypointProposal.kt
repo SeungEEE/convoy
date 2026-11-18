@@ -32,3 +32,53 @@ fun checkProposal(
     toNearestWaypoint != null && toNearestWaypoint < SAME_PLACE_METERS -> ProposalCheck.ALREADY_WAYPOINT
     else -> ProposalCheck.OK
 }
+
+/** SPEC R13-4·5·14: 제안 상태. */
+enum class ProposalState { PENDING, APPROVED, REJECTED, CANCELLED, EXPIRED }
+
+enum class ProposalEvent { LEADER_APPROVE, LEADER_REJECT, PROPOSER_CANCEL, TIMEOUT, SESSION_ENDED }
+
+enum class ProposalEffect { SEND_WAYPOINT }
+
+data class ProposalTransition(val state: ProposalState, val effect: ProposalEffect?)
+
+/**
+ * SPEC R13-4·5·14. 제안은 PENDING에서만 바뀐다. 표에 없는 조합은 상태를 바꾸지 않고 효과도 없다.
+ * 리더가 직접 낸 제안(R13-1)은 이 함수를 거치지 않는다.
+ */
+fun nextProposalState(state: ProposalState, event: ProposalEvent): ProposalTransition {
+    if (state != ProposalState.PENDING) return ProposalTransition(state, null)
+    return when (event) {
+        ProposalEvent.LEADER_APPROVE -> ProposalTransition(ProposalState.APPROVED, ProposalEffect.SEND_WAYPOINT)
+        ProposalEvent.LEADER_REJECT -> ProposalTransition(ProposalState.REJECTED, null)
+        ProposalEvent.PROPOSER_CANCEL, ProposalEvent.SESSION_ENDED -> ProposalTransition(ProposalState.CANCELLED, null)
+        ProposalEvent.TIMEOUT -> ProposalTransition(ProposalState.EXPIRED, null)
+    }
+}
+
+/** SPEC R13-6: 멤버별 반영 상태. */
+enum class ApplyState { SENT, APPLIED, FAILED }
+
+enum class ApplyEvent { WAYPOINT_ADDED, ADD_FAILED, TIMEOUT, RESEND }
+
+/** SPEC R13-6·7. 표에 없는 조합은 상태를 바꾸지 않는다. */
+fun nextApplyState(state: ApplyState, event: ApplyEvent): ApplyState = when {
+    event == ApplyEvent.WAYPOINT_ADDED && state != ApplyState.APPLIED -> ApplyState.APPLIED
+    state == ApplyState.SENT && (event == ApplyEvent.ADD_FAILED || event == ApplyEvent.TIMEOUT) -> ApplyState.FAILED
+    state == ApplyState.FAILED && event == ApplyEvent.RESEND -> ApplyState.SENT
+    else -> state
+}
+
+/** SPEC R13-7: "반영 n/m"과 처리 중·실패 수. 완료는 보낸 수가 1 이상이고 모두 APPLIED일 때다. */
+data class ApplySummary(val applied: Int, val sent: Int, val complete: Boolean, val waiting: Int, val failed: Int)
+
+fun applySummary(states: List<ApplyState>): ApplySummary {
+    val applied = states.count { it == ApplyState.APPLIED }
+    return ApplySummary(
+        applied = applied,
+        sent = states.size,
+        complete = states.isNotEmpty() && applied == states.size,
+        waiting = states.count { it == ApplyState.SENT },
+        failed = states.count { it == ApplyState.FAILED },
+    )
+}
