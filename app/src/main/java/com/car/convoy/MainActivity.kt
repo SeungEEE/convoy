@@ -25,6 +25,8 @@ import com.car.convoy.domain.FollowState
 import com.car.convoy.domain.ReportLocation
 import com.car.convoy.domain.Friend
 import com.car.convoy.domain.Gear
+import com.car.convoy.domain.GroupStatus
+import com.car.convoy.domain.ProposalCheck
 import com.car.convoy.domain.TelltaleReading
 import com.car.convoy.domain.TelltaleState
 import com.car.convoy.domain.TelltaleType
@@ -48,6 +50,8 @@ import com.car.convoy.ui.SentFamilyCard
 import com.car.convoy.ui.accidentScreenModel
 import com.car.convoy.ui.groupScreenModel
 import com.car.convoy.ui.destinationPickerModel
+import com.car.convoy.ui.WaypointPanelModel
+import com.car.convoy.ui.waypointPanelModel
 import com.car.convoy.ui.homeScreenModel
 
 private const val TAG = "Convoy"
@@ -75,6 +79,8 @@ private enum class Screen { HOME, DRIVE, FOLLOW }
  *   앞차 따라가기(R12): lead:p1, laccept, ldecline, move:100, unfollow
  *   주행: dest:서울역, depart:p1, arrive:p1, retry, home, end, resume
  *   사고(R8): airbag:on|off, ok, airbaglater(8초 뒤 켜기, R8-11 확인용)
+ *   경유지(R13, 작업 31): wpropose:p3(가상 멤버 제안, 덕평휴게소) | wpropose:me,pangyo(내가 제안 = 바로 보냄),
+ *     wapprove, wreject, wcancel, wfail:p3(다음 전달 실패), wresend
  */
 class MainActivity : ComponentActivity() {
 
@@ -84,6 +90,10 @@ class MainActivity : ComponentActivity() {
     private val groupModel = mutableStateOf<GroupScreenModel?>(null)
     private val accidentModel = mutableStateOf<AccidentScreenModel?>(null)
     private val pickerModel = mutableStateOf<DestinationPickerModel?>(null)
+    private val waypointModel = mutableStateOf<WaypointPanelModel?>(null)
+
+    /** SPEC R13-1: 내 [경유지로]가 막힌 이유. 다음 제안이 되면 지운다. */
+    private var waypointMessage: String? = null
     private val followModel = mutableStateOf<FollowScreenModel?>(null)
 
     private val roster = GroupRoster(PEOPLE)
@@ -138,6 +148,14 @@ class MainActivity : ComponentActivity() {
             naviDestination = { d -> scheduler.post { naviDestination = d; refresh() } },
             recentDestinations = { list -> scheduler.post { recentDestinations = list; refresh() } },
             bookmarks = { list -> scheduler.post { bookmarkDestinations = list; refresh() } },
+            waypointAdded = { postToDrive { it.onMyWaypointAdded() } },
+            // addWaypoint 예외는 호출 중 동기로 온다(R13-6).
+            waypointFailed = { drive?.onMyWaypointFailed() },
+            // R13-9: 콜백을 받은 시각으로 판정한다(메인 스레드 지연과 무관하게).
+            routeCancelled = {
+                val at = scheduler.nowMillis()
+                scheduler.post { drive?.let { log("경로 취소: ${if (it.isExpectedRouteCancel(at)) "경유지 변경 중(무시, R13-9)" else "안내 종료"}") } }
+            },
         )
         follower = FollowNavigator(navi, scheduler)
         // R8-9: 시연은 가족 없이 시작한다. 가족 상태는 FamilyController에서 읽는다(R9-1). 가족이 없으면 보내지 않는다(R8-5).
@@ -179,6 +197,13 @@ class MainActivity : ComponentActivity() {
                             belowMembers = { accidentUi?.sentCard?.let { c -> SentFamilyCard(c, sentTo) } },
                             onHome = ::goHome,
                             onEnd = ::endDrive,
+                            waypoint = waypointModel.value,
+                            onProposeWaypoint = ::proposeWaypoint,
+                            onApproveWaypoint = { drive?.waypoints?.approve(); log("경유지 승인") },
+                            onRejectWaypoint = { drive?.waypoints?.reject(); log("경유지 거절") },
+                            onResendWaypoint = { drive?.waypoints?.resend(); log("경유지 다시 보내기") },
+                            onDemoProposeWaypoint = { id -> drive?.waypoints?.propose(id, demoWaypoint("rest"))?.let { log("경유지 제안 결과 $it") }; refresh() },
+                            onDemoFailWaypoint = { id -> drive?.server?.failNextWaypoint(id); log("시연: $id 다음 경유지 반영 실패") },
                         )
                     } else {
                         homeModel.value?.let {
@@ -285,11 +310,23 @@ class MainActivity : ComponentActivity() {
         val model = homeModel.value ?: return
         if (!model.canStartDestination || anyDrive) return
         driveMembers = listOf(ME) + roster.members
-        drive = GroupController(ME, driveMembers, navi, scheduler, initialGear = gear) { u ->
-            log("${u.memberId} ${u.event} → ${drive?.session?.memberState(u.memberId)} " +
-                "효과=${u.result.memberEffect} 그룹=${u.result.groupEffect}")
-            refresh()
-        }
+        drive = GroupController(
+            ME, driveMembers, navi, scheduler, initialGear = gear,
+            onUpdate = { u ->
+                log("${u.memberId} ${u.event} → ${drive?.session?.memberState(u.memberId)} " +
+                    "효과=${u.result.memberEffect} 그룹=${u.result.groupEffect}")
+                refresh()
+            },
+            onWaypointChange = {
+                // 상태가 바뀌면 막힌 제안 안내는 지운다(Codex 리뷰). 새 상태의 안내(만료·거절 등)가 보이게.
+                waypointMessage = null
+                drive?.waypoints?.let { w ->
+                    log("경유지 제안=${w.proposal?.let { "${it.proposerId}:${it.place.name}:${it.state}" }} " +
+                        "경유지=${w.waypoints.map { it.name }} 반영=${w.applyStates} 요약=${w.summary}")
+                }
+                refresh()
+            },
+        )
         log("목적지로 함께 시작: $driveMembers")
         screen.value = Screen.DRIVE
         queryDestinationSources()
@@ -312,6 +349,7 @@ class MainActivity : ComponentActivity() {
     /** R11-20, R11-22 [주행 끝내기]: 세션을 버리고 주행 "없음"으로. 그룹은 남는다. 주행 중에도 된다(R10). */
     private fun endDrive() {
         log("주행 끝내기")
+        waypointMessage = null
         drive?.close()
         drive = null
         cancelRequeries()
@@ -456,6 +494,13 @@ class MainActivity : ComponentActivity() {
                 "depart" -> drive?.server?.depart(arg!!)
                 "arrive" -> drive?.server?.arrive(arg!!)
                 "retry" -> drive?.retryMyRoute()
+                // 작업 31(R13): 경유지. 장소는 시연용 고정값(덕평휴게소, 판교역).
+                "wpropose" -> drive?.waypoints?.propose(arg!!.substringBefore(","), demoWaypoint(arg.substringAfter(",", "rest")))?.let { log("경유지 제안 결과 $it") }
+                "wapprove" -> drive?.waypoints?.approve()
+                "wreject" -> drive?.waypoints?.reject()
+                "wcancel" -> drive?.waypoints?.cancel()
+                "wfail" -> drive?.server?.failNextWaypoint(arg!!)
+                "wresend" -> drive?.waypoints?.resend()
                 "airbag" -> accident.onTelltales(
                     listOf(TelltaleReading(TelltaleType.AIRBAG, if (arg == "on") TelltaleState.ON else TelltaleState.OFF)),
                 )
@@ -498,6 +543,14 @@ class MainActivity : ComponentActivity() {
             )
         }
         if (d == null && screen.value == Screen.DRIVE) screen.value = Screen.HOME
+        waypointModel.value = d?.let {
+            val w = it.waypoints
+            waypointPanelModel(
+                myId = ME, proposal = w.proposal, waypoints = w.waypoints, apply = w.applyStates, names = names,
+                earlierFailures = w.earlierFailures,
+                gear = gear, groupActive = it.session.status == GroupStatus.ACTIVE, hasDestination = it.session.destination != null,
+            ).let { m -> waypointMessage?.let { msg -> m.copy(notice = msg) } ?: m }
+        }
         pickerModel.value = d?.let {
             destinationPickerModel(naviDestination, it.session.destination, ignoredSuggestion, recentDestinations, bookmarkDestinations)
         }
@@ -508,6 +561,28 @@ class MainActivity : ComponentActivity() {
             lastSentReport = accident.lastSentReport,
             zone = java.time.ZoneId.systemDefault(),
         )
+    }
+
+    /** SPEC R13-1: 내가(리더) 목록에서 [경유지로]를 누르면 바로 보낸다. 안 되는 이유는 안내 문구로 알린다. */
+    private fun proposeWaypoint(place: Destination) {
+        val result = drive?.waypoints?.propose(ME, place) ?: return
+        log("경유지 제안 ${place.name} → $result")
+        waypointMessage = when (result) {
+            ProposalCheck.OK -> null
+            ProposalCheck.FULL -> "경유지는 2개까지 넣을 수 있어요"
+            ProposalCheck.PENDING_EXISTS -> "답하지 않은 요청이 있어요"
+            ProposalCheck.APPLYING -> "앞 경유지를 반영하는 중이에요"
+            ProposalCheck.SAME_AS_DESTINATION -> "목적지와 같은 곳이에요"
+            ProposalCheck.ALREADY_WAYPOINT -> "이미 들르는 곳이에요"
+            ProposalCheck.NO_DESTINATION, ProposalCheck.NOT_ACTIVE -> "지금은 경유지를 넣을 수 없어요"
+        }
+        refresh()
+    }
+
+    /** 작업 31 시연용 경유지(R13-12). 화면(작업 32) 전까지 adb로만 쓴다. */
+    private fun demoWaypoint(key: String): Destination = when (key) {
+        "pangyo" -> Destination("판교역", "경기 성남시 분당구 판교역로 160", 37.3948, 127.1112)
+        else -> Destination("덕평휴게소", "경기 이천시 마장면", 37.2400, 127.3480)
     }
 
     private fun log(message: String) {
