@@ -1,6 +1,11 @@
 package com.car.convoy
 
 import android.content.Intent
+import com.car.convoy.data.GroupMapController
+import com.car.convoy.data.route.KakaoRouteAdapter
+import com.car.convoy.domain.GeoPoint
+import com.car.convoy.domain.distanceMeters
+import java.util.concurrent.Executors
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
@@ -79,9 +84,16 @@ private enum class Screen { HOME, DRIVE, FOLLOW }
  *   앞차 따라가기(R12): lead:p1, laccept, ldecline, move:100, unfollow
  *   주행: dest:서울역, depart:p1, arrive:p1, retry, home, end, resume
  *   사고(R8): airbag:on|off, ok, airbaglater(8초 뒤 켜기, R8-11 확인용)
+ *   일행 지도(R14, 작업 35): mapmove:p1(경로를 따라 300m 앞으로), mapfreeze:p3(위치 갱신 멈춤), maplog
  *   경유지(R13, 작업 31): wpropose:p3(가상 멤버 제안, 덕평휴게소) | wpropose:me,pangyo(내가 제안 = 바로 보냄),
  *     wapprove, wreject, wcancel, wfail:p3(다음 전달 실패), wresend
  */
+/** SPEC R14-3: 시연용 그룹 경로 출발점(에뮬레이터 내 위치 북서쪽). 이 점 → 나 → 목적지로 찾아 "뒤" 멤버 자리를 만든다. */
+private val DEMO_ROUTE_START = GeoPoint(37.4250, 127.0890)
+
+/** 에뮬레이터의 고정 위치(docs/sdk-findings.md). 여기서 50m 안일 때만 시연 출발점을 쓴다. */
+private val EMULATOR_FIXED_LOCATION = GeoPoint(37.4127, 127.0947)
+
 class MainActivity : ComponentActivity() {
 
     private val scheduler = MainThreadScheduler()
@@ -118,6 +130,17 @@ class MainActivity : ComponentActivity() {
     // ---- 작업 25 앞차 따라가기(R12) ----
     private lateinit var follower: FollowNavigator
     private var myLocation: ReportLocation? = null
+    private var myLocationAt: Long? = null
+
+    // ---- SPEC R14, 작업 35: 일행 지도(그룹 경로와 앞뒤 관계) ----
+    private val routeIoDelegate = lazy { Executors.newSingleThreadExecutor() }
+    private val routeIo by routeIoDelegate
+    private val routes by lazy {
+        KakaoRouteAdapter(BuildConfig.KAKAO_REST_API_KEY, routeIo, { r -> scheduler.post { r.run() } }, ::log)
+    }
+    private var groupMap: GroupMapController? = null
+    private var mapTicker: Cancellable? = null
+    private var mapLoadedFor: Pair<Destination, List<Destination>>? = null
     private var followTicker: Cancellable? = null
 
     private lateinit var navi: NaviHelperAdapter
@@ -143,7 +166,10 @@ class MainActivity : ComponentActivity() {
                 if (follower.active) follower.onRouteFailed() else drive?.onMyRouteFailed()
                 scheduler.post { refresh() }
             },
-            locationReceived = { loc -> scheduler.post { myLocation = loc; accident.onLocation(loc) } },
+            locationReceived = { loc ->
+                val at = scheduler.nowMillis()
+                scheduler.post { myLocation = loc; myLocationAt = at; accident.onLocation(loc); reloadMapIfNeeded() }
+            },
             log = ::log,
             naviDestination = { d -> scheduler.post { naviDestination = d; refresh() } },
             recentDestinations = { list -> scheduler.post { recentDestinations = list; refresh() } },
@@ -277,6 +303,10 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        // 작업 35: 지도 위치 요청 주기와 길찾기 실행기를 정리한다(Codex 리뷰).
+        mapTicker?.cancel()
+        mapTicker = null
+        if (routeIoDelegate.isInitialized()) routeIo.shutdownNow()
         vehicle.stop()
         navi.stop()
         super.onDestroy()
@@ -320,6 +350,8 @@ class MainActivity : ComponentActivity() {
             onWaypointChange = {
                 // 상태가 바뀌면 막힌 제안 안내는 지운다(Codex 리뷰). 새 상태의 안내(만료·거절 등)가 보이게.
                 waypointMessage = null
+                // R14-2: 경유지 목록이 바뀌면 그룹 경로를 다시 찾는다.
+                reloadMapIfNeeded()
                 drive?.waypoints?.let { w ->
                     log("경유지 제안=${w.proposal?.let { "${it.proposerId}:${it.place.name}:${it.state}" }} " +
                         "경유지=${w.waypoints.map { it.name }} 반영=${w.applyStates} 요약=${w.summary}")
@@ -328,6 +360,14 @@ class MainActivity : ComponentActivity() {
             },
         )
         log("목적지로 함께 시작: $driveMembers")
+        // R14-3: 시연용 가상 멤버 자리. 첫째는 내 앞 650m, 둘째는 뒤 1.2km, 나머지는 앞 1.5km.
+        groupMap = GroupMapController(routes, scheduler) { refresh() }.also { map ->
+            driveMembers.filter { it != ME }.forEachIndexed { i, id ->
+                map.placeVirtual(id, when (i) { 0 -> 650.0; 1 -> -1200.0; else -> 1500.0 })
+            }
+        }
+        mapLoadedFor = null
+        startMapTicker()
         screen.value = Screen.DRIVE
         queryDestinationSources()
         refresh()
@@ -351,6 +391,10 @@ class MainActivity : ComponentActivity() {
         log("주행 끝내기")
         waypointMessage = null
         drive?.close()
+        groupMap = null
+        mapTicker?.cancel()
+        mapTicker = null
+        mapLoadedFor = null
         drive = null
         cancelRequeries()
         driveMembers = emptyList()
@@ -462,7 +506,50 @@ class MainActivity : ComponentActivity() {
     private fun chooseDestination(destination: Destination) {
         log("목적지 선택 ${destination.name}")
         drive?.setDestination(destination)
+        reloadMapIfNeeded()
         refresh()
+    }
+
+    /**
+     * SPEC R14-2·3: 그룹 목적지나 경유지가 바뀌었을 때만 길찾기를 부른다. 내 위치를 모르면 위치가 올 때 다시 본다.
+     * 에뮬레이터는 내가 경로 시작점이라 "뒤" 멤버를 만들 수 없어, 시연에서는 내 뒤쪽 출발점 → 나(경유) → 목적지로 찾는다.
+     */
+    private fun reloadMapIfNeeded() {
+        val d = drive ?: return
+        val map = groupMap ?: return
+        val destination = d.session.destination ?: return
+        val me = myLocation ?: run { navi.requestLocation(); return }
+        val key = destination to d.waypoints.waypoints
+        if (key == mapLoadedFor) return
+        mapLoadedFor = key
+        val mePoint = GeoPoint(me.latitude, me.longitude)
+        val waypoints = key.second.map { GeoPoint(it.latitude, it.longitude) }
+        // 시연 출발점은 에뮬레이터 고정 위치에서만 쓴다. 실차에서는 내 위치가 출발점이다(Codex 리뷰).
+        val demo = distanceMeters(mePoint, EMULATOR_FIXED_LOCATION) <= 50.0
+        log("일행 지도 길찾기: ${destination.name}, 경유 ${key.second.map { it.name }}${if (demo) " (시연 출발점)" else ""}")
+        if (demo) map.load(DEMO_ROUTE_START, GeoPoint(destination.latitude, destination.longitude), listOf(mePoint) + waypoints)
+        else map.load(mePoint, GeoPoint(destination.latitude, destination.longitude), waypoints)
+    }
+
+    /** SPEC R14-8: 그룹 주행 중 내 위치를 2초마다 묻는다(지도 다시 그리기는 작업 36). */
+    private fun startMapTicker() {
+        mapTicker?.cancel()
+        fun loop() {
+            if (drive == null) { mapTicker = null; return }
+            // 사고 확인 중에는 사고 확인이 이미 2초마다 위치를 묻는다(Codex 리뷰).
+            if (!accident.checking) navi.requestLocation()
+            mapTicker = scheduler.schedule(2_000) { loop() }
+        }
+        loop()
+    }
+
+    /** 작업 35 확인용: 지도 상태를 로그로 남긴다. */
+    private fun logMap() {
+        val map = groupMap ?: return log("일행 지도 없음")
+        val me = myLocation?.let { GeoPoint(it.latitude, it.longitude) }
+        val s = map.snapshot(me, myLocationAt)
+        log("일행 지도 경로 ${s.route.size}점, 실패=${map.loadFailed}, 내 진행=${s.myProgress?.toInt()}m, 내 위치 확인 중=${s.meUnknown}")
+        s.members.forEach { m -> log("  ${names[m.id] ?: m.id} ${m.relation} ${m.gapMeters.toInt()}m (진행 ${m.progress.toInt()}m, ${m.ageSeconds}초 전)") }
     }
 
     private fun handleDemo(intent: Intent?) {
@@ -494,6 +581,10 @@ class MainActivity : ComponentActivity() {
                 "depart" -> drive?.server?.depart(arg!!)
                 "arrive" -> drive?.server?.arrive(arg!!)
                 "retry" -> drive?.retryMyRoute()
+                // 작업 35(R14-3): 가상 멤버 이동·위치 멈춤, 지도 상태 로그
+                "mapmove" -> { groupMap?.moveVirtual(arg!!, 300.0); logMap() }
+                "mapfreeze" -> { groupMap?.freezeVirtual(arg!!); log("시연: $arg 위치 갱신 멈춤") }
+                "maplog" -> logMap()
                 // 작업 31(R13): 경유지. 장소는 시연용 고정값(덕평휴게소, 판교역).
                 "wpropose" -> drive?.waypoints?.propose(arg!!.substringBefore(","), demoWaypoint(arg.substringAfter(",", "rest")))?.let { log("경유지 제안 결과 $it") }
                 "wapprove" -> drive?.waypoints?.approve()

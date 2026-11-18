@@ -11,6 +11,9 @@ data class GeoPoint(val latitude: Double, val longitude: Double)
 /** SPEC R14-4: 경로 위 투영 결과. 진행 거리는 경로 시작부터 경로를 따라 잰 거리, 떨어진 거리는 투영점까지의 거리다. */
 data class RouteSnap(val progressMeters: Double, val offRouteMeters: Double, val point: GeoPoint)
 
+/** SPEC R14-1: 길찾기 결과. 경로 좌표, 시간(초), 거리(m). */
+data class RouteResult(val points: List<GeoPoint>, val durationSeconds: Int, val distanceMeters: Int)
+
 /** 두 점의 하버사인 거리(m). R11-13과 같은 식을 쓴다. */
 fun distanceMeters(a: GeoPoint, b: GeoPoint): Double =
     distanceMeters(Destination("", "", a.latitude, a.longitude), Destination("", "", b.latitude, b.longitude))
@@ -55,4 +58,23 @@ private fun projectionRatio(p: GeoPoint, a: GeoPoint, b: GeoPoint): Double {
     val lengthSq = bx * bx + by * by
     if (lengthSq == 0.0) return 0.0
     return ((px * bx + py * by) / lengthSq).coerceIn(0.0, 1.0)
+}
+
+/**
+ * SPEC R14-3: 경로를 따라 [progressMeters]만큼 간 지점(시연용 가상 멤버 위치). 선분 안에서는 위도·경도를 비율로 나눈다.
+ * 0보다 작으면 시작점, 경로 길이보다 크면 끝점. 점이 하나면 그 점, 빈 경로면 null이다.
+ */
+fun pointAtProgress(route: List<GeoPoint>, progressMeters: Double): GeoPoint? {
+    if (route.isEmpty()) return null
+    if (progressMeters <= 0.0 || route.size == 1) return route.first()
+    var walked = 0.0
+    for ((a, b) in route.zipWithNext()) {
+        val segment = distanceMeters(a, b)
+        if (segment > 0 && walked + segment >= progressMeters) {
+            val t = (progressMeters - walked) / segment
+            return GeoPoint(a.latitude + (b.latitude - a.latitude) * t, a.longitude + (b.longitude - a.longitude) * t)
+        }
+        walked += segment
+    }
+    return route.last()
 }

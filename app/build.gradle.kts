@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -19,6 +21,11 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // SPEC R14-1: 카카오 키는 local.properties에서 읽는다(저장소에 넣지 않음). 없으면 빈 값이라 지도·길찾기만 실패한다.
+        val local = Properties().apply { rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) } }
+        buildConfigField("String", "KAKAO_NATIVE_APP_KEY", "\"${local.getProperty("KAKAO_NATIVE_APP_KEY", "")}\"")
+        buildConfigField("String", "KAKAO_REST_API_KEY", "\"${local.getProperty("KAKAO_REST_API_KEY", "")}\"")
     }
 
     buildTypes {
@@ -32,6 +39,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
@@ -51,6 +59,8 @@ dependencies {
     implementation("ai.pleos.playground:NaviHelper:3.0.5")
     implementation("ai.pleos.playground:Vehicle:2.3.2")
     testImplementation(libs.junit)
+    // 길찾기 응답(org.json) 해석을 JVM 단위 테스트에서 돌리기 위해(안드로이드 org.json은 테스트에서 비어 있음).
+    testImplementation("org.json:json:20260814")
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(libs.androidx.junit)
 }
