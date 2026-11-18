@@ -25,6 +25,8 @@ import com.car.convoy.domain.FollowState
 import com.car.convoy.domain.ReportLocation
 import com.car.convoy.domain.Friend
 import com.car.convoy.domain.Gear
+import com.car.convoy.domain.GroupStatus
+import com.car.convoy.domain.ProposalCheck
 import com.car.convoy.domain.TelltaleReading
 import com.car.convoy.domain.TelltaleState
 import com.car.convoy.domain.TelltaleType
@@ -48,6 +50,8 @@ import com.car.convoy.ui.SentFamilyCard
 import com.car.convoy.ui.accidentScreenModel
 import com.car.convoy.ui.groupScreenModel
 import com.car.convoy.ui.destinationPickerModel
+import com.car.convoy.ui.WaypointPanelModel
+import com.car.convoy.ui.waypointPanelModel
 import com.car.convoy.ui.homeScreenModel
 
 private const val TAG = "Convoy"
@@ -86,6 +90,10 @@ class MainActivity : ComponentActivity() {
     private val groupModel = mutableStateOf<GroupScreenModel?>(null)
     private val accidentModel = mutableStateOf<AccidentScreenModel?>(null)
     private val pickerModel = mutableStateOf<DestinationPickerModel?>(null)
+    private val waypointModel = mutableStateOf<WaypointPanelModel?>(null)
+
+    /** SPEC R13-1: 내 [경유지로]가 막힌 이유. 다음 제안이 되면 지운다. */
+    private var waypointMessage: String? = null
     private val followModel = mutableStateOf<FollowScreenModel?>(null)
 
     private val roster = GroupRoster(PEOPLE)
@@ -185,6 +193,13 @@ class MainActivity : ComponentActivity() {
                             belowMembers = { accidentUi?.sentCard?.let { c -> SentFamilyCard(c, sentTo) } },
                             onHome = ::goHome,
                             onEnd = ::endDrive,
+                            waypoint = waypointModel.value,
+                            onProposeWaypoint = ::proposeWaypoint,
+                            onApproveWaypoint = { drive?.waypoints?.approve(); log("경유지 승인") },
+                            onRejectWaypoint = { drive?.waypoints?.reject(); log("경유지 거절") },
+                            onResendWaypoint = { drive?.waypoints?.resend(); log("경유지 다시 보내기") },
+                            onDemoProposeWaypoint = { id -> drive?.waypoints?.propose(id, demoWaypoint("rest"))?.let { log("경유지 제안 결과 $it") }; refresh() },
+                            onDemoFailWaypoint = { id -> drive?.server?.failNextWaypoint(id); log("시연: $id 다음 경유지 반영 실패") },
                         )
                     } else {
                         homeModel.value?.let {
@@ -328,6 +343,7 @@ class MainActivity : ComponentActivity() {
     /** R11-20, R11-22 [주행 끝내기]: 세션을 버리고 주행 "없음"으로. 그룹은 남는다. 주행 중에도 된다(R10). */
     private fun endDrive() {
         log("주행 끝내기")
+        waypointMessage = null
         drive?.close()
         drive = null
         cancelRequeries()
@@ -521,6 +537,13 @@ class MainActivity : ComponentActivity() {
             )
         }
         if (d == null && screen.value == Screen.DRIVE) screen.value = Screen.HOME
+        waypointModel.value = d?.let {
+            val w = it.waypoints
+            waypointPanelModel(
+                myId = ME, proposal = w.proposal, waypoints = w.waypoints, apply = w.applyStates, names = names,
+                gear = gear, groupActive = it.session.status == GroupStatus.ACTIVE, hasDestination = it.session.destination != null,
+            ).let { m -> waypointMessage?.let { msg -> m.copy(notice = msg) } ?: m }
+        }
         pickerModel.value = d?.let {
             destinationPickerModel(naviDestination, it.session.destination, ignoredSuggestion, recentDestinations, bookmarkDestinations)
         }
@@ -531,6 +554,22 @@ class MainActivity : ComponentActivity() {
             lastSentReport = accident.lastSentReport,
             zone = java.time.ZoneId.systemDefault(),
         )
+    }
+
+    /** SPEC R13-1: 내가(리더) 목록에서 [경유지로]를 누르면 바로 보낸다. 안 되는 이유는 안내 문구로 알린다. */
+    private fun proposeWaypoint(place: Destination) {
+        val result = drive?.waypoints?.propose(ME, place) ?: return
+        log("경유지 제안 ${place.name} → $result")
+        waypointMessage = when (result) {
+            ProposalCheck.OK -> null
+            ProposalCheck.FULL -> "경유지는 2개까지 넣을 수 있어요"
+            ProposalCheck.PENDING_EXISTS -> "답하지 않은 요청이 있어요"
+            ProposalCheck.APPLYING -> "앞 경유지를 반영하는 중이에요"
+            ProposalCheck.SAME_AS_DESTINATION -> "목적지와 같은 곳이에요"
+            ProposalCheck.ALREADY_WAYPOINT -> "이미 들르는 곳이에요"
+            ProposalCheck.NO_DESTINATION, ProposalCheck.NOT_ACTIVE -> "지금은 경유지를 넣을 수 없어요"
+        }
+        refresh()
     }
 
     /** 작업 31 시연용 경유지(R13-12). 화면(작업 32) 전까지 adb로만 쓴다. */

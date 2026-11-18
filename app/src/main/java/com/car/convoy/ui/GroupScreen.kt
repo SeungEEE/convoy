@@ -73,18 +73,30 @@ fun GroupScreen(
     onOpenNavi: (() -> Unit)? = null,
     onHome: () -> Unit = {},
     onEnd: () -> Unit = {},
+    // ---- SPEC R13, 작업 32: 경유지 ----
+    waypoint: WaypointPanelModel? = null,
+    onProposeWaypoint: (Destination) -> Unit = {},
+    onApproveWaypoint: () -> Unit = {},
+    onRejectWaypoint: () -> Unit = {},
+    onResendWaypoint: () -> Unit = {},
+    onDemoProposeWaypoint: (String) -> Unit = {},
+    onDemoFailWaypoint: (String) -> Unit = {},
     headerExtra: @Composable () -> Unit = {},
     belowMembers: @Composable () -> Unit = {},
 ) {
     val left: @Composable () -> Unit = {
         DestinationCard(model)
+        // 시안 S13: 리더 승인 패널은 길 안내 위 작은 패널처럼 맨 위 가까이에 둔다(주행 중에도 응답 가능, R13-11).
+        waypoint?.request?.let { WaypointRequestCard(it, onApproveWaypoint, onRejectWaypoint) }
+        waypoint?.takeIf { it.waypointNames.isNotEmpty() || it.applyText != null || it.notice != null }?.let { WaypointStatusCard(it, onResendWaypoint) }
         if (model.finished) FinishedBanner()
         MemberTiles(model.members)
-        if (model.demoMemberIds.isNotEmpty()) DemoPanel(model, onDemoDepart, onDemoArrive)
+        if (model.demoMemberIds.isNotEmpty()) DemoPanel(model, onDemoDepart, onDemoArrive, waypoint != null, onDemoProposeWaypoint, onDemoFailWaypoint)
         belowMembers()
     }
     val right: @Composable () -> Unit = {
-        DestinationPicker(model, picker, onChooseDestination, onIgnoreSuggestion, onOpenNavi)
+        DestinationPicker(model, picker, onChooseDestination, onIgnoreSuggestion, onOpenNavi,
+            onPropose = onProposeWaypoint.takeIf { waypoint?.canPropose == true })
         if (model.showRetry) RetryButton(onRetry)
     }
     ScreenFrame(
@@ -299,6 +311,8 @@ private fun DestinationPicker(
     onChoose: (Destination) -> Unit,
     onIgnore: (Destination) -> Unit,
     onOpenNavi: (() -> Unit)?,
+    /** SPEC R13-1: [경유지로]. null이면 보이지 않는다(정차 중이 아니거나 목적지가 없음). */
+    onPropose: ((Destination) -> Unit)? = null,
 ) {
     val enabled = model.canChooseDestination
     Column(
@@ -330,7 +344,8 @@ private fun DestinationPicker(
             if (onOpenNavi != null) Icon24(ConvoyIcon.ChevronRight, Soft, 32.dp, 2.4f)
         }
         Text(if (picker.usingFallback) "추천 목적지" else "최근 목적지", fontSize = SMALL, fontWeight = FontWeight.Bold, color = Soft)
-        picker.recent.forEach { PickLine(it, enabled, onChoose) }
+        if (onPropose != null) Text("[경유지로]를 누르면 목적지는 그대로 두고 들를 곳으로 추가해요", fontSize = SMALL, color = Soft)
+        picker.recent.forEach { PickLine(it, enabled, onChoose, onPropose) }
         if (picker.bookmarks.isNotEmpty()) {
             Text("즐겨찾기", fontSize = SMALL, fontWeight = FontWeight.Bold, color = Soft)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -392,7 +407,7 @@ private fun NaviSuggestionCard(d: Destination, enabled: Boolean, onChoose: (Dest
 
 /** 시안의 목적지 줄: 지금 목적지는 파랑과 ✓, 나머지는 회색 줄과 ›. 비활성은 회색 바탕과 보조 글자색(대비 유지). */
 @Composable
-private fun PickLine(row: PickRow, enabled: Boolean, onChoose: (Destination) -> Unit) {
+private fun PickLine(row: PickRow, enabled: Boolean, onChoose: (Destination) -> Unit, onPropose: ((Destination) -> Unit)? = null) {
     val d = row.destination
     val selected = row.current
     Row(
@@ -415,7 +430,79 @@ private fun PickLine(row: PickRow, enabled: Boolean, onChoose: (Destination) -> 
             )
         }
         if (selected) Icon24(ConvoyIcon.Check, Color.White, 38.dp, 2.6f)
+        else if (onPropose != null) WaypointPill { onPropose(d) }
         else Icon24(ConvoyIcon.ChevronRight, Soft, 32.dp, 2.4f)
+    }
+}
+
+/** SPEC R13-1: 목록 줄 오른쪽의 [경유지로]. 줄 전체를 누르면 목적지 변경, 이 버튼은 경유지 제안이다. */
+@Composable
+private fun WaypointPill(onClick: () -> Unit) {
+    Box(
+        Modifier.heightIn(min = 80.dp).widthIn(min = 160.dp)
+            .background(Card, RoundedCornerShape(999.dp))
+            .border(2.dp, Accent, RoundedCornerShape(999.dp))
+            .clip(RoundedCornerShape(999.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 22.dp),
+        contentAlignment = Alignment.Center,
+    ) { Text("경유지로", fontSize = SMALL, fontWeight = FontWeight.Bold, color = Accent) }
+}
+
+/** 시안 S13: 리더 승인 패널. [수락] [거절]은 응답이라 주행 중에도 된다(R13-11). */
+@Composable
+private fun WaypointRequestCard(request: WaypointRequestUi, onApprove: () -> Unit, onReject: () -> Unit) {
+    Column(
+        Modifier.fillMaxWidth().background(Card, BigCard).border(3.dp, Accent, BigCard).padding(32.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Text(request.title, fontSize = 34.sp, fontWeight = FontWeight.ExtraBold, color = Ink)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            Icon24(ConvoyIcon.Pin, Accent, 40.dp, 2.4f)
+            Column {
+                Text(request.placeName, fontSize = 40.sp, fontWeight = FontWeight.ExtraBold, color = Ink)
+                Text(request.placeAddress, fontSize = SMALL, color = Soft)
+            }
+        }
+        Text("목적지는 그대로 두고 경유지로 추가해요", fontSize = SMALL, color = Soft)
+        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            Box(
+                Modifier.weight(1f).heightIn(min = 96.dp).background(Palette.Brand, RoundedCornerShape(22.dp))
+                    .clip(RoundedCornerShape(22.dp)).clickable(enabled = request.canRespond, onClick = onApprove),
+                contentAlignment = Alignment.Center,
+            ) { Text("수락", fontSize = 34.sp, fontWeight = FontWeight.ExtraBold, color = Color.White) }
+            Box(
+                Modifier.weight(1f).heightIn(min = 96.dp).background(Card, RoundedCornerShape(22.dp))
+                    .border(2.dp, Palette.CardLine, RoundedCornerShape(22.dp))
+                    .clip(RoundedCornerShape(22.dp)).clickable(enabled = request.canRespond, onClick = onReject),
+                contentAlignment = Alignment.Center,
+            ) { Text("거절", fontSize = 34.sp, fontWeight = FontWeight.ExtraBold, color = Ink) }
+        }
+    }
+}
+
+/** 시안 S14·S15: 경유지 목록과 반영 n/m. 일부만 반영되면 처리 중·실패를 이름과 함께 보여 준다(R13-7). */
+@Composable
+private fun WaypointStatusCard(model: WaypointPanelModel, onResend: () -> Unit) {
+    Column(
+        Modifier.fillMaxWidth().background(Card, BigCard).border(1.dp, Palette.CardLine, BigCard).padding(horizontal = 36.dp, vertical = 28.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        model.waypointNames.forEach { Text(it, fontSize = BODY, fontWeight = FontWeight.Bold, color = Ink) }
+        model.applyText?.let {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (model.applyComplete) Icon24(ConvoyIcon.Check, Done, 34.dp, 2.6f)
+                Text(it, fontSize = BODY, fontWeight = FontWeight.Bold, color = if (model.applyComplete) Done else if (model.showResend) Danger else Accent)
+            }
+        }
+        if (model.showResend) {
+            OutlinedButton(
+                onClick = onResend,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 88.dp),
+                shape = RoundedCornerShape(12.dp),
+            ) { Text("실패한 차에 다시 보내기", fontSize = BODY, fontWeight = FontWeight.Bold, color = Danger) }
+        }
+        model.notice?.let { Text(it, fontSize = SMALL, color = Soft) }
     }
 }
 
@@ -431,7 +518,14 @@ private fun RetryButton(onRetry: () -> Unit) {
 /** SPEC R11-18, R11-20: 가상 멤버의 출발·도착을 만드는 시연용 패널(시안). 점선 테두리로 실제 기능과 구분한다. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun DemoPanel(model: GroupScreenModel, onDepart: (String) -> Unit, onArrive: (String) -> Unit) {
+private fun DemoPanel(
+    model: GroupScreenModel,
+    onDepart: (String) -> Unit,
+    onArrive: (String) -> Unit,
+    showWaypoint: Boolean = false,
+    onProposeWaypoint: (String) -> Unit = {},
+    onFailWaypoint: (String) -> Unit = {},
+) {
     Column(
         modifier = Modifier.fillMaxWidth()
             .background(Color(0xFFFFFBF4), RoundedCornerShape(28.dp))
@@ -447,12 +541,19 @@ private fun DemoPanel(model: GroupScreenModel, onDepart: (String) -> Unit, onArr
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             Chip("시연용", Demo, SMALL)
-            Text("가상 멤버 출발·도착", fontSize = SMALL, color = Color(0xFF3B4552))
+            Text(if (showWaypoint) "가상 멤버 출발·도착·경유지" else "가상 멤버 출발·도착", fontSize = SMALL, color = Color(0xFF3B4552))
         }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             model.members.filter { it.id in model.demoMemberIds }.forEach { m ->
                 DemoButton("${m.name} 출발") { onDepart(m.id) }
                 DemoButton("${m.name} 도착") { onArrive(m.id) }
+            }
+        }
+        // SPEC R13-12: 가상 멤버의 경유지 제안(덕평휴게소)과 다음 반영 실패.
+        if (showWaypoint) FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            model.members.filter { it.id in model.demoMemberIds }.forEach { m ->
+                DemoButton("${m.name}: 덕평휴게소 제안") { onProposeWaypoint(m.id) }
+                DemoButton("${m.name} 반영 실패") { onFailWaypoint(m.id) }
             }
         }
     }
