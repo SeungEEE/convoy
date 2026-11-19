@@ -2,7 +2,17 @@ package com.car.convoy
 
 import android.content.Intent
 import com.car.convoy.data.GroupMapController
+import com.car.convoy.data.MapGuide
 import com.car.convoy.data.route.KakaoRouteAdapter
+import com.car.convoy.domain.arrivalCardText
+import com.car.convoy.domain.redrawIntervalSeconds
+import com.car.convoy.domain.turnCardText
+import com.car.convoy.ui.GroupMap
+import com.car.convoy.ui.GroupMapUi
+import com.car.convoy.ui.groupMapUi
+import com.kakao.vectormap.KakaoMapSdk
+import androidx.compose.runtime.mutableIntStateOf
+import java.time.ZoneId
 import com.car.convoy.domain.GeoPoint
 import com.car.convoy.domain.distanceMeters
 import java.util.concurrent.Executors
@@ -141,6 +151,19 @@ class MainActivity : ComponentActivity() {
     private var groupMap: GroupMapController? = null
     private var mapTicker: Cancellable? = null
     private var mapLoadedFor: Pair<Destination, List<Destination>>? = null
+
+    // ---- SPEC R14-6~8·13~17, 작업 36: 함께 주행 지도 화면 ----
+    private val mapGuide = MapGuide()
+    private val mapUi = mutableStateOf<GroupMapUi?>(null)
+    private val mapRouteVersion = mutableIntStateOf(0)
+    private var lastMapDrawAt = Long.MIN_VALUE
+    /** R14-15: 마지막으로 본 그룹 목적지·경유지. 바뀌면 회전 안내·도착 값을 지운다. */
+    private var guideKey: Pair<Destination?, List<Destination>>? = null
+    /**
+     * 지도를 그릴 수 없는 이유. null이면 지도를 쓴다. 키가 없거나, 카카오맵 네이티브 라이브러리가 이 기기 ABI에 없으면
+     * (x86_64 에뮬레이터, docs/sdk-findings.md) 지도 대신 이 문구를 보여 준다. 경로·앞뒤 계산과 카드는 그대로 동작한다.
+     */
+    private var mapUnavailable: String? = null
     private var followTicker: Cancellable? = null
 
     private lateinit var navi: NaviHelperAdapter
@@ -164,7 +187,8 @@ class MainActivity : ComponentActivity() {
             // requestRoute 예외는 호출 중 동기로 오므로 큐에 넣지 않고 바로 알린다(R11-19). 화면 갱신만 나중에 한다.
             routeFailed = {
                 if (follower.active) follower.onRouteFailed() else drive?.onMyRouteFailed()
-                scheduler.post { refresh() }
+                // R14-15: 내 차의 경로 요청이 실패하면 회전 안내·도착 값을 지운다.
+                scheduler.post { clearMapGuide("경로 요청 실패"); refresh() }
             },
             locationReceived = { loc ->
                 val at = scheduler.nowMillis()
@@ -180,9 +204,31 @@ class MainActivity : ComponentActivity() {
             // R13-9: 콜백을 받은 시각으로 판정한다(메인 스레드 지연과 무관하게).
             routeCancelled = {
                 val at = scheduler.nowMillis()
-                scheduler.post { drive?.let { log("경로 취소: ${if (it.isExpectedRouteCancel(at)) "경유지 변경 중(무시, R13-9)" else "안내 종료"}") } }
+                scheduler.post {
+                    drive?.let {
+                        val expected = it.isExpectedRouteCancel(at)
+                        log("경로 취소: ${if (expected) "경유지 변경 중(무시, R13-9)" else "안내 종료"}")
+                        // R14-15: 안내가 끝나면 회전 안내·도착 값을 지운다. 경유지 변경 중 취소(R13-9)는 제외한다.
+                        if (!expected) clearMapGuide("경로 취소")
+                    }
+                }
             },
+            // R14-7·15: 그룹 주행 중에만 쓴다(앞차 따라가기 화면에는 지도가 없다).
+            turns = { list -> scheduler.post { if (drive != null) { mapGuide.onTurns(list); refreshMapCards() } } },
+            destinationRemain = { r -> scheduler.post { if (drive != null) { mapGuide.onDestinationRemain(r); refreshMapCards() } } },
         )
+        // R14-9: 카카오 키가 있을 때만 지도를 쓴다(키는 local.properties, R14-1).
+        // UnsatisfiedLinkError는 Exception이 아니므로 Throwable로 받는다.
+        mapUnavailable = when {
+            BuildConfig.KAKAO_NATIVE_APP_KEY.isBlank() -> "지도를 쓰려면 카카오 키가 필요해요"
+            else -> try {
+                KakaoMapSdk.init(applicationContext, BuildConfig.KAKAO_NATIVE_APP_KEY)
+                null
+            } catch (t: Throwable) {
+                log("카카오맵 초기화 실패: $t")
+                "이 기기에서는 지도를 그릴 수 없어요"
+            }
+        }
         follower = FollowNavigator(navi, scheduler)
         // R8-9: 시연은 가족 없이 시작한다. 가족 상태는 FamilyController에서 읽는다(R9-1). 가족이 없으면 보내지 않는다(R8-5).
         accident = AccidentController(familyServer, navi, scheduler, FamilyState.NONE, ::onAccidentChange, familySource = { family.state })
@@ -230,6 +276,10 @@ class MainActivity : ComponentActivity() {
                             onResendWaypoint = { drive?.waypoints?.resend(); log("경유지 다시 보내기") },
                             onDemoProposeWaypoint = { id -> drive?.waypoints?.propose(id, demoWaypoint("rest"))?.let { log("경유지 제안 결과 $it") }; refresh() },
                             onDemoFailWaypoint = { id -> drive?.server?.failNextWaypoint(id); log("시연: $id 다음 경유지 반영 실패") },
+                            // SPEC R14-16, 작업 36: 함께 주행 지도
+                            map = { m -> GroupMap(mapUi.value, mapRouteVersion.intValue, mapUnavailable, m) },
+                            memberLabels = mapUi.value?.memberLabels.orEmpty(),
+                            onDemoMapMove = { id -> moveVirtualMember(id) },
                         )
                     } else {
                         homeModel.value?.let {
@@ -361,12 +411,16 @@ class MainActivity : ComponentActivity() {
         )
         log("목적지로 함께 시작: $driveMembers")
         // R14-3: 시연용 가상 멤버 자리. 첫째는 내 앞 650m, 둘째는 뒤 1.2km, 나머지는 앞 1.5km.
-        groupMap = GroupMapController(routes, scheduler) { refresh() }.also { map ->
+        // R14-2·17: 길찾기를 시작하거나 결과가 오면 지도를 바로 다시 그린다(경로·안내 문구가 바뀌므로).
+        groupMap = GroupMapController(routes, scheduler) { redrawMap(); refresh() }.also { map ->
             driveMembers.filter { it != ME }.forEachIndexed { i, id ->
                 map.placeVirtual(id, when (i) { 0 -> 650.0; 1 -> -1200.0; else -> 1500.0 })
             }
         }
         mapLoadedFor = null
+        mapGuide.clear()
+        guideKey = null
+        redrawMap()
         startMapTicker()
         screen.value = Screen.DRIVE
         queryDestinationSources()
@@ -395,6 +449,10 @@ class MainActivity : ComponentActivity() {
         mapTicker?.cancel()
         mapTicker = null
         mapLoadedFor = null
+        // R14-15: 세션을 버리면 회전 안내·도착 값과 지도를 지운다.
+        mapGuide.clear()
+        guideKey = null
+        mapUi.value = null
         drive = null
         cancelRequeries()
         driveMembers = emptyList()
@@ -517,6 +575,12 @@ class MainActivity : ComponentActivity() {
     private fun reloadMapIfNeeded() {
         val d = drive ?: return
         val map = groupMap ?: return
+        // R14-15: 그룹 목적지나 경유지가 바뀌면 이전 경로의 회전 안내·도착 값을 바로 지운다(내 위치와 무관하게).
+        val currentGuideKey = d.session.destination to d.waypoints.waypoints
+        if (currentGuideKey != guideKey) {
+            if (guideKey != null) clearMapGuide("목적지·경유지 변경")
+            guideKey = currentGuideKey
+        }
         val destination = d.session.destination ?: return
         val me = myLocation ?: run { navi.requestLocation(); return }
         val key = destination to d.waypoints.waypoints
@@ -531,16 +595,71 @@ class MainActivity : ComponentActivity() {
         else map.load(mePoint, GeoPoint(destination.latitude, destination.longitude), waypoints)
     }
 
-    /** SPEC R14-8: 그룹 주행 중 내 위치를 2초마다 묻는다(지도 다시 그리기는 작업 36). */
+    /**
+     * SPEC R14-8: 그룹 주행 중 내 위치를 2초마다 묻고, 마커는 정차 중 2초·주행 중 10초마다 다시 그린다(redrawIntervalSeconds).
+     * 그 사이에 들어온 위치는 다음 다시 그리기 때 한꺼번에 반영한다.
+     */
     private fun startMapTicker() {
         mapTicker?.cancel()
         fun loop() {
             if (drive == null) { mapTicker = null; return }
             // 사고 확인 중에는 사고 확인이 이미 2초마다 위치를 묻는다(Codex 리뷰).
             if (!accident.checking) navi.requestLocation()
+            // 예약 시계가 조금 일찍 울릴 수 있어(docs/sdk-findings.md 작업 21) 0.5초 여유를 둔다.
+            val due = lastMapDrawAt == Long.MIN_VALUE ||
+                scheduler.nowMillis() - lastMapDrawAt >= redrawIntervalSeconds(gear) * 1_000L - 500
+            if (due) redrawMap()
             mapTicker = scheduler.schedule(2_000) { loop() }
         }
         loop()
+    }
+
+    /** SPEC R14-6·13·16: 지금 상태로 지도에 그릴 값을 다시 만든다. */
+    private fun redrawMap() {
+        val d = drive
+        val map = groupMap
+        if (d == null || map == null) { mapUi.value = null; return }
+        val me = myLocation?.let { GeoPoint(it.latitude, it.longitude) }
+        mapUi.value = groupMapUi(
+            snapshot = map.snapshot(me, myLocationAt),
+            loading = map.loading,
+            failed = map.loadFailed,
+            destination = d.session.destination,
+            waypoints = d.waypoints.waypoints,
+            names = names,
+            turn = mapGuide.turn,
+            remain = mapGuide.remain,
+            nowMillis = System.currentTimeMillis(),
+            zone = ZoneId.systemDefault(),
+        )
+        mapRouteVersion.intValue = map.routeVersion
+        lastMapDrawAt = scheduler.nowMillis()
+    }
+
+    /** SPEC R14-7·15: 카드만 바로 바꾼다. 마커는 R14-8의 다시 그리기 간격을 지킨다. */
+    private fun refreshMapCards() {
+        val ui = mapUi.value ?: return
+        val hasDestination = drive?.session?.destination != null
+        mapUi.value = ui.copy(
+            turnCard = if (hasDestination) mapGuide.turn?.let { turnCardText(it.turnTypeName, it.distanceMeters, it.description) } else null,
+            arrivalCard = if (hasDestination) mapGuide.remain?.let {
+                arrivalCardText(System.currentTimeMillis(), ZoneId.systemDefault(), it.seconds, it.meters)
+            } else null,
+        )
+    }
+
+    /** SPEC R14-15: 회전 안내·도착 값을 지운다. */
+    private fun clearMapGuide(reason: String) {
+        if (mapGuide.turn == null && mapGuide.remain == null) return
+        log("지도 카드 지움: $reason")
+        mapGuide.clear()
+        refreshMapCards()
+    }
+
+    /** SPEC R14-3: 시연 버튼 [<이름> 300m 앞으로]. 지도에는 다음 다시 그리기 때 반영된다(R14-8). */
+    private fun moveVirtualMember(id: String) {
+        groupMap?.moveVirtual(id, 300.0)
+        log("시연: ${names[id] ?: id} 300m 앞으로")
     }
 
     /** 작업 35 확인용: 지도 상태를 로그로 남긴다. */
@@ -582,7 +701,7 @@ class MainActivity : ComponentActivity() {
                 "arrive" -> drive?.server?.arrive(arg!!)
                 "retry" -> drive?.retryMyRoute()
                 // 작업 35(R14-3): 가상 멤버 이동·위치 멈춤, 지도 상태 로그
-                "mapmove" -> { groupMap?.moveVirtual(arg!!, 300.0); logMap() }
+                "mapmove" -> { moveVirtualMember(arg!!); logMap() }
                 "mapfreeze" -> { groupMap?.freezeVirtual(arg!!); log("시연: $arg 위치 갱신 멈춤") }
                 "maplog" -> logMap()
                 // 작업 31(R13): 경유지. 장소는 시연용 고정값(덕평휴게소, 판교역).

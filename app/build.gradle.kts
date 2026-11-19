@@ -58,6 +58,8 @@ dependencies {
     implementation(libs.androidx.compose.material3)
     implementation("ai.pleos.playground:NaviHelper:3.0.5")
     implementation("ai.pleos.playground:Vehicle:2.3.2")
+    // SPEC R14-9·16: 함께 주행 지도(작업 36). 시그니처는 AAR을 javap로 확인했다.
+    implementation("com.kakao.maps.open:android:2.15.2")
     testImplementation(libs.junit)
     // 길찾기 응답(org.json) 해석을 JVM 단위 테스트에서 돌리기 위해(안드로이드 org.json은 테스트에서 비어 있음).
     testImplementation("org.json:json:20260814")
