@@ -1,15 +1,11 @@
 package com.car.convoy.ui
 
-import android.annotation.SuppressLint
-import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.Typeface
 import android.util.Log
-import android.view.MotionEvent
-import android.widget.FrameLayout
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -72,13 +68,16 @@ private const val FIT_PADDING = 120
  * 카드는 그대로 겹친다.
  */
 @Composable
-fun GroupMap(ui: GroupMapUi?, routeVersion: Int, unavailable: String?, modifier: Modifier = Modifier) {
+fun GroupMap(ui: GroupMapUi?, drawVersion: Int, routeVersion: Int, unavailable: String?, modifier: Modifier = Modifier) {
+    // 지도를 띄운 뒤 생긴 오류(인증·렌더러·네트워크 등, Codex 리뷰). 생기면 지도 대신 안내를 보여 준다.
+    var mapError by remember { mutableStateOf(false) }
+    val reason = unavailable ?: if (mapError) "지도를 불러오지 못했어요" else null
     Box(modifier.background(Color(0xFFE9ECF0), RoundedCornerShape(32.dp))) {
-        if (unavailable == null) KakaoMapLayer(ui, routeVersion, Modifier.fillMaxSize())
+        if (reason == null) KakaoMapLayer(ui, drawVersion, routeVersion, { mapError = true }, Modifier.fillMaxSize())
 
         ui?.turnCard?.let { TurnCard(it.title, it.subtitle, Modifier.align(Alignment.TopStart).padding(20.dp)) }
         // 지도 안내 문구(R14-2·6·16)를 가운데에 둔다. 지도를 못 그리면 그 이유를 위에 함께 둔다.
-        val messages = listOfNotNull(unavailable, ui?.banner)
+        val messages = listOfNotNull(reason, ui?.banner)
         if (messages.isNotEmpty()) Column(
             Modifier.align(Alignment.Center),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -88,30 +87,38 @@ fun GroupMap(ui: GroupMapUi?, routeVersion: Int, unavailable: String?, modifier:
     }
 }
 
+/**
+ * 카카오맵. 지도 내용은 [drawVersion]이 바뀔 때만 다시 그린다(카드만 바뀌면 그대로, Codex 리뷰).
+ * 좁은 창(R14-16)에서 지도는 화면 세로 스크롤 안에 있고, 바깥 스크롤을 막지 않는다. 세로로 끄는 손가락은 화면 스크롤이
+ * 먼저 가져간다(화면을 함께 스크롤한다는 R14-16을 우선). 지도 확대·이동은 넓은 창에서 온전히 된다.
+ */
 @Composable
-private fun KakaoMapLayer(ui: GroupMapUi?, routeVersion: Int, modifier: Modifier) {
+private fun KakaoMapLayer(ui: GroupMapUi?, drawVersion: Int, routeVersion: Int, onError: () -> Unit, modifier: Modifier) {
     val context = LocalContext.current
     var kakaoMap by remember { mutableStateOf<KakaoMap?>(null) }
-    val fitted = remember { intArrayOf(-1) }
-    val mapView = remember {
-        MapView(context).apply {
-            start(
-                object : MapLifeCycleCallback() {
-                    override fun onMapDestroy() { kakaoMap = null }
-                    override fun onMapError(error: Exception) { Log.i(TAG, "카카오맵 오류: $error") }
-                },
-                object : KakaoMapReadyCallback() {
-                    override fun onMapReady(map: KakaoMap) {
-                        Log.i(TAG, "카카오맵 준비됨")
-                        kakaoMap = map
-                    }
-                },
-            )
-        }
-    }
+    // [그린 drawVersion, 맞춘 routeVersion]. 지도가 새로 준비되면 처음부터 다시 그린다.
+    val done = remember { intArrayOf(-1, -1) }
+    val mapView = remember { MapView(context) }
 
-    // 액티비티 생명주기에 맞춰 resume·pause하고, 화면에서 빠지면 끝낸다(docs/sdk-findings.md).
+    // 시작과 생명주기 연결은 효과 안에서 한다(구성이 버려지면 시작하지 않게). 이미 RESUMED면 바로 resume한다(Codex 리뷰).
     DisposableEffect(mapView) {
+        mapView.start(
+            object : MapLifeCycleCallback() {
+                override fun onMapDestroy() { kakaoMap = null }
+                override fun onMapError(error: Exception) {
+                    Log.i(TAG, "카카오맵 오류: $error")
+                    onError()
+                }
+            },
+            object : KakaoMapReadyCallback() {
+                override fun onMapReady(map: KakaoMap) {
+                    Log.i(TAG, "카카오맵 준비됨")
+                    done[0] = -1
+                    done[1] = -1
+                    kakaoMap = map
+                }
+            },
+        )
         val lifecycle = (context as? ComponentActivity)?.lifecycle
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
@@ -121,6 +128,7 @@ private fun KakaoMapLayer(ui: GroupMapUi?, routeVersion: Int, modifier: Modifier
             }
         }
         lifecycle?.addObserver(observer)
+        if (lifecycle?.currentState?.isAtLeast(Lifecycle.State.RESUMED) == true) mapView.resume()
         onDispose {
             lifecycle?.removeObserver(observer)
             mapView.finish()
@@ -128,31 +136,23 @@ private fun KakaoMapLayer(ui: GroupMapUi?, routeVersion: Int, modifier: Modifier
     }
 
     AndroidView(
-        factory = { ctx -> TouchKeeper(ctx).apply { addView(mapView) } },
+        factory = { mapView },
         modifier = modifier,
         update = {
             val map = kakaoMap ?: return@AndroidView
-            draw(map, ui)
+            if (drawVersion != done[0]) {
+                done[0] = drawVersion
+                draw(map, ui)
+            }
             // R14-17: 새 길찾기 결과가 온 직후 한 번만 맞춘다. 사용자가 움직인 뒤에도 새 경로면 다시 맞춘다.
             val route = ui?.lines?.firstOrNull { it.color == LineColor.BLUE }?.points
-            if (route != null && routeVersion != fitted[0]) {
-                fitted[0] = routeVersion
+            if (route != null && routeVersion != done[1]) {
+                done[1] = routeVersion
                 val points = (route + ui.markers.map { it.position }).map { LatLng.from(it.latitude, it.longitude) }
                 map.moveCamera(CameraUpdateFactory.fitMapPoints(points.toTypedArray(), FIT_PADDING))
             }
         },
     )
-}
-
-/**
- * 좁은 창(R14-16)에서는 지도가 세로 스크롤 안에 있다. 지도를 누르는 동안에는 바깥 스크롤이 손가락을 가져가지 않게 한다.
- */
-@SuppressLint("ViewConstructor")
-private class TouchKeeper(context: Context) : FrameLayout(context) {
-    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
-        if (event.actionMasked == MotionEvent.ACTION_DOWN) parent?.requestDisallowInterceptTouchEvent(true)
-        return super.dispatchTouchEvent(event)
-    }
 }
 
 /** 선과 마커를 모두 지우고 [ui]대로 다시 그린다. 파랑을 먼저, 초록·주황을 위에, 마커를 맨 위에 둔다. */
