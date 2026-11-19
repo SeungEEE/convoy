@@ -12,8 +12,10 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.padding
@@ -83,6 +85,13 @@ fun GroupScreen(
     onDemoFailWaypoint: (String) -> Unit = {},
     headerExtra: @Composable () -> Unit = {},
     belowMembers: @Composable () -> Unit = {},
+    // ---- SPEC R14-16, 작업 36: 함께 주행 지도 ----
+    /** 지도. null이면 지도 없이 이전 배치(R11-20)를 쓴다. */
+    map: (@Composable (Modifier) -> Unit)? = null,
+    /** 멤버 id → 앞뒤 문구(R14-13). 멤버 타일에 한 줄 더한다. */
+    memberLabels: Map<String, String?> = emptyMap(),
+    /** 시연 버튼 [<이름> 300m 앞으로](R14-3). null이면 보이지 않는다. */
+    onDemoMapMove: ((String) -> Unit)? = null,
 ) {
     val left: @Composable () -> Unit = {
         DestinationCard(model)
@@ -90,14 +99,22 @@ fun GroupScreen(
         waypoint?.request?.let { WaypointRequestCard(it, onApproveWaypoint, onRejectWaypoint) }
         waypoint?.takeIf { it.waypointNames.isNotEmpty() || it.applyText != null || it.notice != null }?.let { WaypointStatusCard(it, onResendWaypoint) }
         if (model.finished) FinishedBanner()
-        MemberTiles(model.members)
-        if (model.demoMemberIds.isNotEmpty()) DemoPanel(model, onDemoDepart, onDemoArrive, waypoint != null, onDemoProposeWaypoint, onDemoFailWaypoint)
+        MemberTiles(model.members, memberLabels)
+        if (model.demoMemberIds.isNotEmpty()) DemoPanel(model, onDemoDepart, onDemoArrive, waypoint != null, onDemoProposeWaypoint, onDemoFailWaypoint, onDemoMapMove)
         belowMembers()
     }
     val right: @Composable () -> Unit = {
         DestinationPicker(model, picker, onChooseDestination, onIgnoreSuggestion, onOpenNavi,
             onPropose = onProposeWaypoint.takeIf { waypoint?.canPropose == true })
         if (model.showRetry) RetryButton(onRetry)
+    }
+    if (map != null) {
+        MapScreenFrame(
+            header = { single -> DriveHeader(model, single, onHome, onEnd, headerExtra) },
+            map = map,
+            panel = { left(); right() },
+        )
+        return
     }
     ScreenFrame(
         header = { single -> DriveHeader(model, single, onHome, onEnd, headerExtra) },
@@ -190,6 +207,46 @@ internal fun ScreenFrame(
     } }
 }
 
+/** SPEC R14-16: 좁은 창에서 지도의 높이. */
+private val NARROW_MAP_HEIGHT = 480.dp
+
+/**
+ * SPEC R14-16: 지도가 있는 그룹 주행 화면. 넓은 창(1,200dp 이상)은 머리줄 아래 왼쪽에 지도(남은 높이를 채우고 스크롤 안 됨),
+ * 오른쪽에 그룹 패널(손 세로 스크롤)이다. 좁은 창은 머리줄 아래 지도를 480dp로 두고 그 아래 패널을 쌓아 함께 스크롤한다.
+ * 자동 스크롤은 하지 않는다(R11-20).
+ */
+@Composable
+private fun MapScreenFrame(
+    header: @Composable (single: Boolean) -> Unit,
+    map: @Composable (Modifier) -> Unit,
+    panel: @Composable () -> Unit,
+) {
+    key(LocalDensity.current.density) { BoxWithConstraints(Modifier.fillMaxSize().background(Page)) {
+        val single = isSingleColumn(maxWidth.value)
+        if (single) {
+            Column(
+                Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                header(true)
+                map(Modifier.fillMaxWidth().height(NARROW_MAP_HEIGHT))
+                panel()
+            }
+        } else {
+            Column(Modifier.fillMaxSize().padding(horizontal = 36.dp, vertical = 24.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
+                header(false)
+                Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(28.dp)) {
+                    map(Modifier.weight(1.2f).fillMaxHeight())
+                    Column(
+                        Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(20.dp),
+                    ) { panel() }
+                }
+            }
+        }
+    } }
+}
+
 /**
  * 머리줄 왼쪽의 앱 아이콘. Pleos 가이드대로 아이콘에 글자를 함께 둔다(홈). 버튼이 많은 주행 화면은 아이콘만 두고
  * 옆에 화면 제목이 온다([wordmark] = false).
@@ -263,11 +320,11 @@ private fun FinishedBanner() {
 
 /** 시안의 멤버 타일: 한 줄에 3개씩. */
 @Composable
-private fun MemberTiles(members: List<MemberRow>) {
+private fun MemberTiles(members: List<MemberRow>, mapLabels: Map<String, String?> = emptyMap()) {
     Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
         members.chunked(3).forEach { rowItems ->
             Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-                rowItems.forEach { MemberTile(it, Modifier.weight(1f)) }
+                rowItems.forEach { MemberTile(it, Modifier.weight(1f), mapLabels[it.id]) }
                 repeat(3 - rowItems.size) { Spacer(Modifier.weight(1f)) }
             }
         }
@@ -275,7 +332,7 @@ private fun MemberTiles(members: List<MemberRow>) {
 }
 
 @Composable
-private fun MemberTile(row: MemberRow, modifier: Modifier) {
+private fun MemberTile(row: MemberRow, modifier: Modifier, mapLabel: String? = null) {
     val color = memberStateColor(row.state)
     Column(
         modifier.background(Card, RoundedCornerShape(28.dp)).border(1.dp, Palette.CardLine, RoundedCornerShape(28.dp)).padding(26.dp),
@@ -299,6 +356,8 @@ private fun MemberTile(row: MemberRow, modifier: Modifier) {
             Text(row.stateLabel, fontSize = BODY, fontWeight = FontWeight.ExtraBold, color = color)
         }
         Text(if (row.isLeader) "리더" else if (row.isVirtual) "가상 멤버" else "", fontSize = SMALL, color = Soft)
+        // SPEC R14-13·16: 지도 기준 앞뒤 문구. 이름은 타일 위에 있으므로 "민수 · " 뒤만 보여 준다.
+        mapLabel?.let { Text(it.substringAfter(" · "), fontSize = SMALL, fontWeight = FontWeight.Bold, color = Ink) }
     }
 }
 
@@ -545,6 +604,7 @@ private fun DemoPanel(
     showWaypoint: Boolean = false,
     onProposeWaypoint: (String) -> Unit = {},
     onFailWaypoint: (String) -> Unit = {},
+    onMapMove: ((String) -> Unit)? = null,
 ) {
     Column(
         modifier = Modifier.fillMaxWidth()
@@ -574,6 +634,12 @@ private fun DemoPanel(
             model.members.filter { it.id in model.demoMemberIds }.forEach { m ->
                 DemoButton("${m.name}: 덕평휴게소 제안") { onProposeWaypoint(m.id) }
                 DemoButton("${m.name} 반영 실패") { onFailWaypoint(m.id) }
+            }
+        }
+        // SPEC R14-3: 가상 멤버를 경로를 따라 300m 앞으로.
+        if (onMapMove != null) FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            model.members.filter { it.id in model.demoMemberIds }.forEach { m ->
+                DemoButton("${m.name} 300m 앞으로") { onMapMove(m.id) }
             }
         }
     }

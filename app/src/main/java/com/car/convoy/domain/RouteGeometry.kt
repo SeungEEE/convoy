@@ -61,6 +61,32 @@ private fun projectionRatio(p: GeoPoint, a: GeoPoint, b: GeoPoint): Double {
 }
 
 /**
+ * SPEC R14-14: 초록·주황으로 칠할 구간. 두 진행 거리를 각각 0과 경로 길이 사이로 클램프한 뒤 작은 쪽부터 정렬한다.
+ * 결과는 작은 쪽 지점, 진행 거리가 두 값 사이(양 끝 제외)인 꼭짓점들, 큰 쪽 지점 순이다.
+ * 클램프한 두 값이 같으면 그 지점 하나, 점이 하나뿐인 경로는 그 점 하나, 빈 경로는 빈 목록이다.
+ */
+fun routeSection(route: List<GeoPoint>, fromProgress: Double, toProgress: Double): List<GeoPoint> {
+    if (route.isEmpty()) return emptyList()
+    if (route.size == 1) return listOf(route[0])
+    val length = routeLengthMeters(route)
+    val a = fromProgress.coerceIn(0.0, length)
+    val b = toProgress.coerceIn(0.0, length)
+    val start = minOf(a, b)
+    val end = maxOf(a, b)
+    val first = pointAtProgress(route, start)!!
+    if (start == end) return listOf(first)
+
+    val result = mutableListOf(first)
+    var walked = 0.0
+    for (i in 1 until route.size) {
+        walked += distanceMeters(route[i - 1], route[i])
+        if (walked > start && walked < end) result += route[i]
+    }
+    result += pointAtProgress(route, end)!!
+    return result
+}
+
+/**
  * SPEC R14-3: 경로를 따라 [progressMeters]만큼 간 지점(시연용 가상 멤버 위치). 선분 안에서는 위도·경도를 비율로 나눈다.
  * 0보다 작으면 시작점, 경로 길이보다 크면 끝점. 점이 하나면 그 점, 빈 경로면 null이다.
  */

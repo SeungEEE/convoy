@@ -47,6 +47,10 @@ class GroupMapController(
     var loadFailed = false
         private set
 
+    /** SPEC R14-17: 새 길찾기 결과를 받을 때마다 1씩 는다. 화면은 이 값이 바뀔 때만 카메라를 한 번 맞춘다. */
+    var routeVersion = 0
+        private set
+
     /** 경로 시간·거리(도착 카드가 내비 값을 못 받았을 때의 참고용). */
     val routeSummary: RouteResult?
         get() = route
@@ -68,6 +72,7 @@ class GroupMapController(
             if (seq != requestSeq) return@route
             route = result
             loadFailed = result == null
+            if (result != null) routeVersion++
             loading = false
             onChange()
         }
