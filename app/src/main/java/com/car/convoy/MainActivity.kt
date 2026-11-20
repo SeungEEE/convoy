@@ -30,6 +30,11 @@ import com.car.convoy.data.MainThreadScheduler
 import com.car.convoy.data.navi.NaviHelperAdapter
 import com.car.convoy.data.vehicle.VehicleSource
 import com.car.convoy.domain.Destination
+import com.car.convoy.domain.DriveView
+import com.car.convoy.domain.driveEntryScreen
+import com.car.convoy.ui.MapCameraLedger
+import com.car.convoy.ui.locateEnabled
+import com.kakao.vectormap.camera.CameraPosition
 import com.car.convoy.domain.FamilyState
 import com.car.convoy.domain.FollowEvent
 import com.car.convoy.domain.FollowState
@@ -150,6 +155,16 @@ class MainActivity : ComponentActivity() {
 
     // ---- SPEC R14-6~8·13~17, 작업 36: 함께 주행 지도 화면 ----
     private val mapUi = mutableStateOf<GroupMapUi?>(null)
+    /** SPEC R14-18: 함께 주행의 지금 화면(주행 화면 또는 그룹 화면). 들어올 때 정하고, 그 뒤에는 사용자가 누를 때만 바뀐다. */
+    private val driveView = mutableStateOf(DriveView.GROUP)
+    /** SPEC R14-16 [내 위치]: 누를 때마다 1씩 늘린다. */
+    private val locateVersion = mutableIntStateOf(0)
+    /** 이번 주행 세션을 시작한 시각. [내 위치]는 그 뒤 위치를 받았을 때만 누를 수 있다(R14-16). */
+    private var driveStartedAt: Long? = null
+    /** 지도가 준비되어 있고 오류가 없는지(R14-16 [내 위치], Codex 리뷰). */
+    private val mapReady = mutableStateOf(false)
+    /** 카메라 장부. 화면을 오가 지도가 다시 만들어져도 남는다(R14-8·17, Codex 리뷰). 세션마다 새로 만든다. */
+    private var cameraLedger = MapCameraLedger<CameraPosition>()
     private val mapDrawVersion = mutableIntStateOf(0)
     private val mapRouteVersion = mutableIntStateOf(0)
     private val mapScreen by lazy {
@@ -296,9 +311,15 @@ class MainActivity : ComponentActivity() {
                             onDemoProposeWaypoint = { id -> drive?.waypoints?.propose(id, demoWaypoint("rest"))?.let { log("경유지 제안 결과 $it") }; refresh() },
                             onDemoFailWaypoint = { id -> drive?.server?.failNextWaypoint(id); log("시연: $id 다음 경유지 반영 실패") },
                             // SPEC R14-16, 작업 36: 함께 주행 지도
-                            map = { m -> GroupMap(mapUi.value, mapDrawVersion.intValue, mapRouteVersion.intValue, mapUnavailable, m) },
+                            map = { m -> GroupMap(mapUi.value, mapDrawVersion.intValue, mapRouteVersion.intValue, mapUnavailable, m, locateVersion.intValue, cameraLedger) { ready -> mapReady.value = ready } },
                             memberLabels = mapUi.value?.memberLabels.orEmpty(),
                             onDemoMapMove = { id -> moveVirtualMember(id) },
+                            // SPEC R14-9·16·18·19, 작업 39: 주행 화면과 그룹 화면
+                            view = driveView.value,
+                            onShowView = { v -> driveView.value = v; log("화면: $v") },
+                            mapUi = mapUi.value,
+                            canLocate = canLocate(),
+                            onLocate = { locateVersion.intValue += 1; log("내 위치로") },
                         )
                     } else {
                         homeModel.value?.let {
@@ -440,13 +461,21 @@ class MainActivity : ComponentActivity() {
         mapScreen.startSession()
         showMap()
         startMapTicker()
+        driveStartedAt = scheduler.nowMillis()
+        cameraLedger = MapCameraLedger(locateVersion.intValue)
+        // R14-18: 새 세션은 목적지가 없으니 그룹 화면부터 연다.
+        driveView.value = driveEntryScreen(hasDestination = drive?.session?.destination != null)
         screen.value = Screen.DRIVE
         queryDestinationSources()
         refresh()
     }
 
     private fun resume() {
-        if (drive != null) screen.value = Screen.DRIVE
+        drive?.let { d ->
+            // R14-18: 다시 들어올 때도 목적지가 있으면 주행 화면, 없으면 그룹 화면.
+            driveView.value = driveEntryScreen(hasDestination = d.session.destination != null)
+            screen.value = Screen.DRIVE
+        }
         if (follower.active) { screen.value = Screen.FOLLOW; startFollowTicker() }
         queryDestinationSources()
         refresh()
@@ -471,6 +500,7 @@ class MainActivity : ComponentActivity() {
         mapScreen.endSession()
         showMap()
         drive = null
+        driveStartedAt = null
         cancelRequeries()
         driveMembers = emptyList()
         screen.value = Screen.HOME
@@ -637,6 +667,10 @@ class MainActivity : ComponentActivity() {
         mapDrawVersion.intValue = mapScreen.drawVersion
         mapRouteVersion.intValue = mapScreen.routeVersion
     }
+
+    /** SPEC R14-16 [내 위치]: 지도를 그릴 수 있고, 이번 세션에서 내 위치를 한 번이라도 받았을 때만. */
+    private fun canLocate(): Boolean =
+        locateEnabled(driveStartedAt, myLocationAt, mapReady = mapUnavailable == null && mapReady.value, hasMyPoint = mapUi.value?.myPoint != null)
 
     /** SPEC R14-3: 시연 버튼 [<이름> 300m 앞으로]. 지도에는 다음 다시 그리기 때 반영된다(R14-8). */
     private fun moveVirtualMember(id: String) {
