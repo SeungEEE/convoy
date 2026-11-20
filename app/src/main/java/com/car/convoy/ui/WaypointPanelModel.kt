@@ -27,7 +27,16 @@ data class WaypointPanelModel(
     val canPropose: Boolean,
     /** 끝난 제안의 안내(거절·만료·취소). */
     val notice: String?,
-)
+    /** [다시 보내기]를 누를 수 있는지. 실패가 있고 정차 중일 때만(R13-7, R10 "경유지 다시 보내기"). */
+    val canResend: Boolean = false,
+) {
+    /** SPEC R14-19 `WAYPOINT` 칸: 경유지 이름, 반영 문구, 알림, [다시 보내기] 중 하나라도 있으면 상태가 있다. 요청은 넣지 않는다. */
+    val hasStatus: Boolean get() = waypointNames.isNotEmpty() || applyText != null || notice != null || showResend
+}
+
+/** SPEC R14-19 `MEMBERS`: 멤버 줄은 3줄까지 보여 주고, 넘치면 넷째 줄에 "외 n명"을 쓴다. */
+fun infoCardMemberLines(labels: List<String>): List<String> =
+    if (labels.size <= 3) labels else labels.take(3) + "외 ${labels.size - 3}명"
 
 /**
  * SPEC R13-1·4·7·11. [myId]는 이 앱의 차(리더)다. [apply]는 가장 최근 경유지의 멤버별 반영 상태이고 순서대로 이름을 쓴다.
@@ -80,5 +89,6 @@ fun waypointPanelModel(
         showResend = summary.failed > 0,
         canPropose = groupActive && hasDestination && canPerform(DriverAction.PROPOSE_WAYPOINT, gear),
         notice = notice,
+        canResend = summary.failed > 0 && canPerform(DriverAction.RESEND_WAYPOINT, gear),
     )
 }

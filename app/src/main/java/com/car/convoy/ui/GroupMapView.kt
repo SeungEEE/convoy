@@ -11,7 +11,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
@@ -61,19 +60,20 @@ private val MARKER_GRAY = Color(0xFF7A8492)
 private const val FIT_PADDING = 120
 
 /**
- * SPEC R14-6·7·15·16·17: 함께 주행 지도. 카카오맵 위에 경로선·마커·핀을 그리고, 회전 안내·도착 카드와 안내 문구를 겹친다.
+ * SPEC R14-6·7·15·16·17: 함께 주행 지도. 카카오맵 위에 경로선·마커·핀을 그리고, 회전 안내 카드와 안내 문구를 겹친다.
+ * 도착 문구는 주행 화면의 정보 카드(R14-19)가 보여 준다.
  * [ui]가 바뀔 때마다 선과 마커를 모두 다시 그린다(다시 그리는 간격은 부르는 쪽이 R14-8대로 정한다).
  * 카메라는 [routeVersion]이 바뀔 때만 애니메이션 없이 경로 전체에 맞춘다(R14-17).
  * [unavailable]이 있으면(카카오 키 없음, 이 기기 ABI에 지도 라이브러리 없음) 지도 대신 그 문구를 보여 주고,
- * 카드는 그대로 겹친다.
+ * 카드는 그대로 겹친다. [locateVersion]이 바뀌면 [내 위치](R14-16)를 누른 것이라 내 위치를 가운데로 옮긴다.
  */
 @Composable
-fun GroupMap(ui: GroupMapUi?, drawVersion: Int, routeVersion: Int, unavailable: String?, modifier: Modifier = Modifier) {
+fun GroupMap(ui: GroupMapUi?, drawVersion: Int, routeVersion: Int, unavailable: String?, modifier: Modifier = Modifier, locateVersion: Int = 0) {
     // 지도를 띄운 뒤 생긴 오류(인증·렌더러·네트워크 등, Codex 리뷰). 생기면 지도 대신 안내를 보여 준다.
     var mapError by remember { mutableStateOf(false) }
     val reason = unavailable ?: if (mapError) "지도를 불러오지 못했어요" else null
     Box(modifier.background(Color(0xFFE9ECF0), RoundedCornerShape(32.dp))) {
-        if (reason == null) KakaoMapLayer(ui, drawVersion, routeVersion, { mapError = true }, Modifier.fillMaxSize())
+        if (reason == null) KakaoMapLayer(ui, drawVersion, routeVersion, locateVersion, { mapError = true }, Modifier.fillMaxSize())
 
         ui?.turnCard?.let { TurnCard(it.title, it.subtitle, Modifier.align(Alignment.TopStart).padding(20.dp)) }
         // 지도 안내 문구(R14-2·6·16)를 가운데에 둔다. 지도를 못 그리면 그 이유를 위에 함께 둔다.
@@ -83,7 +83,6 @@ fun GroupMap(ui: GroupMapUi?, drawVersion: Int, routeVersion: Int, unavailable: 
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) { messages.forEach { Overlay(it, Modifier) } }
-        ui?.arrivalCard?.let { ArrivalCard(it, Modifier.align(Alignment.BottomCenter).padding(20.dp)) }
     }
 }
 
@@ -93,11 +92,13 @@ fun GroupMap(ui: GroupMapUi?, drawVersion: Int, routeVersion: Int, unavailable: 
  * 먼저 가져간다(화면을 함께 스크롤한다는 R14-16을 우선). 지도 확대·이동은 넓은 창에서 온전히 된다.
  */
 @Composable
-private fun KakaoMapLayer(ui: GroupMapUi?, drawVersion: Int, routeVersion: Int, onError: () -> Unit, modifier: Modifier) {
+private fun KakaoMapLayer(ui: GroupMapUi?, drawVersion: Int, routeVersion: Int, locateVersion: Int, onError: () -> Unit, modifier: Modifier) {
     val context = LocalContext.current
     var kakaoMap by remember { mutableStateOf<KakaoMap?>(null) }
     // [그린 drawVersion, 맞춘 routeVersion]. 지도가 새로 준비되면 처음부터 다시 그린다.
     val done = remember { intArrayOf(-1, -1) }
+    // [내 위치]를 처리한 번호. 처음 값은 이미 처리한 것으로 본다(지도가 뜰 때 저절로 옮기지 않게, R14-8).
+    val located = remember { intArrayOf(locateVersion) }
     val mapView = remember { MapView(context) }
 
     // 시작과 생명주기 연결은 효과 안에서 한다(구성이 버려지면 시작하지 않게). 이미 RESUMED면 바로 resume한다(Codex 리뷰).
@@ -150,6 +151,11 @@ private fun KakaoMapLayer(ui: GroupMapUi?, drawVersion: Int, routeVersion: Int, 
                 done[1] = routeVersion
                 val points = (route + ui.markers.map { it.position }).map { LatLng.from(it.latitude, it.longitude) }
                 map.moveCamera(CameraUpdateFactory.fitMapPoints(points.toTypedArray(), FIT_PADDING))
+            }
+            // R14-16 [내 위치]: 사용자가 누를 때만, 애니메이션 없이 가운데로 옮긴다(확대 수준은 그대로).
+            if (locateVersion != located[0]) {
+                located[0] = locateVersion
+                ui?.myPoint?.let { map.moveCamera(CameraUpdateFactory.newCenterPosition(LatLng.from(it.latitude, it.longitude))) }
             }
         },
     )
@@ -250,15 +256,6 @@ private fun TurnCard(title: String, subtitle: String?, modifier: Modifier) {
         Text(title, fontSize = 40.sp, fontWeight = FontWeight.ExtraBold, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
         subtitle?.let { Text(it, fontSize = 28.sp, color = Palette.OnNightSoft, maxLines = 1, overflow = TextOverflow.Ellipsis) }
     }
-}
-
-/** SPEC R14-7·15: 도착 카드(지도 아래쪽). */
-@Composable
-private fun ArrivalCard(text: String, modifier: Modifier) {
-    Row(
-        modifier.background(Palette.Card, RoundedCornerShape(24.dp)).padding(horizontal = 32.dp, vertical = 18.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) { Text(text, fontSize = 32.sp, fontWeight = FontWeight.ExtraBold, color = Palette.Ink, maxLines = 1, overflow = TextOverflow.Ellipsis) }
 }
 
 /** 지도 가운데 안내 문구(R14-2·6·16). */

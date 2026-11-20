@@ -38,6 +38,12 @@ data class GroupMapUi(
     val memberLabels: Map<String, String?>,
     val turnCard: TurnCardText?,
     val arrivalCard: String?,
+    /** SPEC R14-19: 경로가 있다(목적지 있음, 요청 중 아님, 실패 아님, 경로 점 있음). 없으면 정보 카드에 멤버 줄·내 위치 칸이 없다. */
+    val hasRoute: Boolean = false,
+    /** SPEC R14-5·19: 내 위치를 모름(오래됐거나 경로 밖). */
+    val meUnknown: Boolean = false,
+    /** SPEC R14-16 [내 위치]: 마지막으로 받은 내 위치. ME_UNKNOWN이어도 있다. */
+    val myPoint: GeoPoint? = null,
 )
 
 /**
@@ -108,5 +114,8 @@ fun groupMapUi(
         },
         turnCard = if (destination == null) null else turn?.let { turnCardText(it.turnTypeName, it.distanceMeters, it.description) },
         arrivalCard = if (destination == null) null else remain?.let { arrivalCardText(nowMillis, zone, it.seconds, it.meters) },
+        hasRoute = destination != null && !loading && !failed && route.isNotEmpty(),
+        meUnknown = snapshot.meUnknown,
+        myPoint = snapshot.myPoint,
     )
 }

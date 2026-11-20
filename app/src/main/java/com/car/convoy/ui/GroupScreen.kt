@@ -46,7 +46,10 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.res.painterResource
 import com.car.convoy.R
 import com.car.convoy.domain.Destination
+import com.car.convoy.domain.DriveView
 import com.car.convoy.domain.GroupMemberState
+import com.car.convoy.domain.InfoCardSection
+import com.car.convoy.domain.infoCardSections
 
 // 차량 화면은 160dpi라 1dp = 1px이다. 버튼 높이 80dp 이상, 글자 28sp 이상(R11-20, docs/sdk-findings.md).
 private val SMALL = 28.sp
@@ -86,12 +89,22 @@ fun GroupScreen(
     headerExtra: @Composable () -> Unit = {},
     belowMembers: @Composable () -> Unit = {},
     // ---- SPEC R14-16, 작업 36: 함께 주행 지도 ----
-    /** 지도. null이면 지도 없이 이전 배치(R11-20)를 쓴다. */
+    /** 지도. null이면 주행 화면 없이 그룹 화면(R11-20)만 쓴다. */
     map: (@Composable (Modifier) -> Unit)? = null,
     /** 멤버 id → 앞뒤 문구(R14-13). 멤버 타일에 한 줄 더한다. */
     memberLabels: Map<String, String?> = emptyMap(),
     /** 시연 버튼 [<이름> 300m 앞으로](R14-3). null이면 보이지 않는다. */
     onDemoMapMove: ((String) -> Unit)? = null,
+    // ---- SPEC R14-9·16·18·19, 작업 39: 주행 화면과 그룹 화면 ----
+    /** 지금 화면. [map]이 있을 때만 주행 화면을 쓴다. */
+    view: DriveView = DriveView.GROUP,
+    /** 머리줄의 [함께 주행] [그룹 n명]. 화면 이동이라 R10 제한이 없다. */
+    onShowView: (DriveView) -> Unit = {},
+    /** 정보 카드에 쓸 지도 값(R14-19). */
+    mapUi: GroupMapUi? = null,
+    /** [내 위치]를 누를 수 있는지(R14-16). */
+    canLocate: Boolean = false,
+    onLocate: () -> Unit = {},
 ) {
     val left: @Composable () -> Unit = {
         DestinationCard(model)
@@ -108,16 +121,13 @@ fun GroupScreen(
             onPropose = onProposeWaypoint.takeIf { waypoint?.canPropose == true })
         if (model.showRetry) RetryButton(onRetry)
     }
-    if (map != null) {
-        MapScreenFrame(
-            header = { single -> DriveHeader(model, single, onHome, onEnd, headerExtra) },
-            map = map,
-            panel = { left(); right() },
-        )
+    if (map != null && view == DriveView.MAP) {
+        DriveMapScreen(model, mapUi, map, waypoint, headerExtra, onShowView, canLocate, onLocate, onApproveWaypoint, onRejectWaypoint)
         return
     }
+    val tabs: (@Composable () -> Unit)? = if (map != null) ({ ViewTabs(DriveView.GROUP, model.members.size, onShowView) }) else null
     ScreenFrame(
-        header = { single -> DriveHeader(model, single, onHome, onEnd, headerExtra) },
+        header = { single -> DriveHeader(model, single, onHome, onEnd, headerExtra, tabs) },
         // SPEC R11-20: 1열이면 왼쪽 열(상태·멤버) 다음 오른쪽 열(목적지 고르기 등).
         singleColumn = { left(); right() },
         twoColumns = {
@@ -133,7 +143,14 @@ fun GroupScreen(
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun DriveHeader(model: GroupScreenModel, single: Boolean, onHome: () -> Unit, onEnd: () -> Unit, extra: @Composable () -> Unit) {
+private fun DriveHeader(
+    model: GroupScreenModel,
+    single: Boolean,
+    onHome: () -> Unit,
+    onEnd: () -> Unit,
+    extra: @Composable () -> Unit,
+    tabs: (@Composable () -> Unit)? = null,
+) {
     val arrived = model.members.count { it.state == GroupMemberState.ARRIVED }
     val title: @Composable () -> Unit = {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(22.dp)) {
@@ -149,6 +166,7 @@ private fun DriveHeader(model: GroupScreenModel, single: Boolean, onHome: () -> 
         }
     }
     val actions: @Composable () -> Unit = {
+        tabs?.invoke()
         Box(
             Modifier.heightIn(min = 80.dp).background(Card, RoundedCornerShape(20.dp)).border(2.dp, Color(0xFFE8B4AE), RoundedCornerShape(20.dp))
                 .clip(RoundedCornerShape(20.dp)).clickable(onClick = onEnd).padding(horizontal = 24.dp),
@@ -202,46 +220,6 @@ internal fun ScreenFrame(
                 Column(verticalArrangement = Arrangement.spacedBy(16.dp)) { singleColumn() }
             } else {
                 Row(horizontalArrangement = Arrangement.spacedBy(28.dp)) { twoColumns() }
-            }
-        }
-    } }
-}
-
-/** SPEC R14-16: 좁은 창에서 지도의 높이. */
-private val NARROW_MAP_HEIGHT = 480.dp
-
-/**
- * SPEC R14-16: 지도가 있는 그룹 주행 화면. 넓은 창(1,200dp 이상)은 머리줄 아래 왼쪽에 지도(남은 높이를 채우고 스크롤 안 됨),
- * 오른쪽에 그룹 패널(손 세로 스크롤)이다. 좁은 창은 머리줄 아래 지도를 480dp로 두고 그 아래 패널을 쌓아 함께 스크롤한다.
- * 자동 스크롤은 하지 않는다(R11-20).
- */
-@Composable
-private fun MapScreenFrame(
-    header: @Composable (single: Boolean) -> Unit,
-    map: @Composable (Modifier) -> Unit,
-    panel: @Composable () -> Unit,
-) {
-    key(LocalDensity.current.density) { BoxWithConstraints(Modifier.fillMaxSize().background(Page)) {
-        val single = isSingleColumn(maxWidth.value)
-        if (single) {
-            Column(
-                Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 24.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-            ) {
-                header(true)
-                map(Modifier.fillMaxWidth().height(NARROW_MAP_HEIGHT))
-                panel()
-            }
-        } else {
-            Column(Modifier.fillMaxSize().padding(horizontal = 36.dp, vertical = 24.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
-                header(false)
-                Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(28.dp)) {
-                    map(Modifier.weight(1.2f).fillMaxHeight())
-                    Column(
-                        Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.spacedBy(20.dp),
-                    ) { panel() }
-                }
             }
         }
     } }
@@ -575,11 +553,14 @@ private fun WaypointStatusCard(model: WaypointPanelModel, onResend: () -> Unit) 
             }
         }
         if (model.showResend) {
+            // R13-7, R10 "경유지 다시 보내기": 정차 중에만 누를 수 있다(작업 39).
             OutlinedButton(
                 onClick = onResend,
+                enabled = model.canResend,
                 modifier = Modifier.fillMaxWidth().heightIn(min = 88.dp),
                 shape = RoundedCornerShape(12.dp),
-            ) { Text("실패한 차에 다시 보내기", fontSize = BODY, fontWeight = FontWeight.Bold, color = Danger) }
+            ) { Text("실패한 차에 다시 보내기", fontSize = BODY, fontWeight = FontWeight.Bold, color = if (model.canResend) Danger else Soft) }
+            if (!model.canResend) Text("정차 중에 다시 보낼 수 있어요", fontSize = SMALL, color = Soft)
         }
         model.notice?.let { Text(it, fontSize = SMALL, color = Soft) }
     }

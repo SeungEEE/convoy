@@ -33,6 +33,9 @@ enum class DriverAction {
 
     /** R10 표의 "경유지 제안 취소"(R13-11). 응답이라 주행 중에도 된다. */
     CANCEL_WAYPOINT_PROPOSAL,
+
+    /** R10 표의 "경유지 다시 보내기"(R13-7, 작업 39). 응답이 아니라 설정이라 정차 중에만 한다. */
+    RESEND_WAYPOINT,
 }
 
 /**
