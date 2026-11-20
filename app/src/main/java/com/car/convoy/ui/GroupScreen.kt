@@ -125,9 +125,8 @@ fun GroupScreen(
         DriveMapScreen(model, mapUi, map, waypoint, headerExtra, onShowView, canLocate, onLocate, onApproveWaypoint, onRejectWaypoint)
         return
     }
-    val tabs: (@Composable () -> Unit)? = if (map != null) ({ ViewTabs(DriveView.GROUP, model.members.size, onShowView) }) else null
     ScreenFrame(
-        header = { single -> DriveHeader(model, single, onHome, onEnd, headerExtra, tabs) },
+        header = { single -> DriveHeader(model, single, onHome, onEnd, headerExtra, if (map != null) onShowView else null) },
         // SPEC R11-20: 1열이면 왼쪽 열(상태·멤버) 다음 오른쪽 열(목적지 고르기 등).
         singleColumn = { left(); right() },
         twoColumns = {
@@ -149,7 +148,8 @@ private fun DriveHeader(
     onHome: () -> Unit,
     onEnd: () -> Unit,
     extra: @Composable () -> Unit,
-    tabs: (@Composable () -> Unit)? = null,
+    /** SPEC R14-18: 주행 화면이 있으면 머리줄 왼쪽을 주행 화면과 같게(아이콘, "Convoy", 탭) 둔다. */
+    onShowView: ((DriveView) -> Unit)? = null,
 ) {
     val arrived = model.members.count { it.state == GroupMemberState.ARRIVED }
     val title: @Composable () -> Unit = {
@@ -166,7 +166,6 @@ private fun DriveHeader(
         }
     }
     val actions: @Composable () -> Unit = {
-        tabs?.invoke()
         Box(
             Modifier.heightIn(min = 80.dp).background(Card, RoundedCornerShape(20.dp)).border(2.dp, Color(0xFFE8B4AE), RoundedCornerShape(20.dp))
                 .clip(RoundedCornerShape(20.dp)).clickable(onClick = onEnd).padding(horizontal = 24.dp),
@@ -182,6 +181,14 @@ private fun DriveHeader(
             Text("$arrived", fontSize = 44.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
             Text("/ ${model.members.size}", fontSize = BODY, fontWeight = FontWeight.SemiBold, color = Color(0xFFC9D0DA))
         }
+    }
+    if (onShowView != null) {
+        // R14-18: 탭은 주행 화면과 같은 자리. [‹]와 그룹 상태는 머리줄 아래 첫 줄로 내린다.
+        Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
+            DriveTabsHeader(model.members.size, DriveView.GROUP, single, onShowView) { actions() }
+            title()
+        }
+        return
     }
     if (single) {
         Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {

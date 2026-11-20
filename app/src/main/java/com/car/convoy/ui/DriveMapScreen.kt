@@ -98,7 +98,7 @@ internal fun DriveMapScreen(
                 Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                MapHeader(model, single = true, onShowView, headerExtra)
+                DriveTabsHeader(model.members.size, DriveView.MAP, single = true, onShowView) { headerExtra() }
                 Box(Modifier.fillMaxWidth().height(NARROW_MAP_HEIGHT)) {
                     map(Modifier.fillMaxSize())
                     overlays()
@@ -107,7 +107,7 @@ internal fun DriveMapScreen(
             }
         } else {
             Column(Modifier.fillMaxSize().padding(horizontal = 36.dp, vertical = 24.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
-                MapHeader(model, single = false, onShowView, headerExtra)
+                DriveTabsHeader(model.members.size, DriveView.MAP, single = false, onShowView) { headerExtra() }
                 BoxWithConstraints(Modifier.fillMaxSize()) {
                     map(Modifier.fillMaxSize())
                     overlays()
@@ -123,15 +123,24 @@ internal fun DriveMapScreen(
     } }
 }
 
-/** SPEC R14-16: 주행 화면 머리줄. 앱 아이콘과 "Convoy", [함께 주행] [그룹 n명], 오른쪽 끝에 가족 표시. */
+/**
+ * SPEC R14-16·18: 두 화면이 같이 쓰는 머리줄. 왼쪽은 앱 아이콘과 "Convoy", [함께 주행] [그룹 n명]으로 두 화면이 같아
+ * 화면을 오가도 탭이 움직이지 않는다. 오른쪽 끝에 [trailing](주행 화면은 가족 표시, 그룹 화면은 [주행 끝내기]·가족·도착 n/m).
+ */
 @Composable
-private fun MapHeader(model: GroupScreenModel, single: Boolean, onShowView: (DriveView) -> Unit, extra: @Composable () -> Unit) {
+internal fun DriveTabsHeader(
+    memberCount: Int,
+    selected: DriveView,
+    single: Boolean,
+    onShowView: (DriveView) -> Unit,
+    trailing: @Composable () -> Unit,
+) {
     HeaderRows(
         single = single,
-        lead = { ViewTabs(DriveView.MAP, model.members.size, onShowView) },
+        lead = { ViewTabs(selected, memberCount, onShowView) },
         trail = {
             if (!single) Spacer(Modifier.weight(1f))
-            extra()
+            trailing()
         },
     )
 }
