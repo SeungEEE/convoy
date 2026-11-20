@@ -11,7 +11,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
@@ -40,6 +39,7 @@ import com.kakao.vectormap.KakaoMapReadyCallback
 import com.kakao.vectormap.LatLng
 import com.kakao.vectormap.MapLifeCycleCallback
 import com.kakao.vectormap.MapView
+import com.kakao.vectormap.camera.CameraPosition
 import com.kakao.vectormap.camera.CameraUpdateFactory
 import com.kakao.vectormap.label.LabelOptions
 import com.kakao.vectormap.label.LabelStyle
@@ -61,19 +61,34 @@ private val MARKER_GRAY = Color(0xFF7A8492)
 private const val FIT_PADDING = 120
 
 /**
- * SPEC R14-6·7·15·16·17: 함께 주행 지도. 카카오맵 위에 경로선·마커·핀을 그리고, 회전 안내·도착 카드와 안내 문구를 겹친다.
+ * SPEC R14-6·7·15·16·17: 함께 주행 지도. 카카오맵 위에 경로선·마커·핀을 그리고, 회전 안내 카드와 안내 문구를 겹친다.
+ * 도착 문구는 주행 화면의 정보 카드(R14-19)가 보여 준다.
  * [ui]가 바뀔 때마다 선과 마커를 모두 다시 그린다(다시 그리는 간격은 부르는 쪽이 R14-8대로 정한다).
- * 카메라는 [routeVersion]이 바뀔 때만 애니메이션 없이 경로 전체에 맞춘다(R14-17).
+ * 카메라는 [routeVersion]이 바뀔 때만 애니메이션 없이 경로 전체에 맞춘다(R14-17). 무엇을 이미 처리했는지는 지도보다 오래 사는
+ * [ledger]가 기억한다. 화면을 오가 지도가 다시 만들어지면 경로에 다시 맞추지 않고 떠날 때의 카메라 위치로 되돌린다(Codex 리뷰).
+ * [onReadyChange]는 지도가 준비되면 true, 오류가 나거나 지도가 사라지면 false다([내 위치] 잠김, R14-16).
  * [unavailable]이 있으면(카카오 키 없음, 이 기기 ABI에 지도 라이브러리 없음) 지도 대신 그 문구를 보여 주고,
- * 카드는 그대로 겹친다.
+ * 카드는 그대로 겹친다. [locateVersion]이 바뀌면 [내 위치](R14-16)를 누른 것이라 내 위치를 가운데로 옮긴다.
  */
 @Composable
-fun GroupMap(ui: GroupMapUi?, drawVersion: Int, routeVersion: Int, unavailable: String?, modifier: Modifier = Modifier) {
+fun GroupMap(
+    ui: GroupMapUi?,
+    drawVersion: Int,
+    routeVersion: Int,
+    unavailable: String?,
+    modifier: Modifier = Modifier,
+    locateVersion: Int = 0,
+    ledger: MapCameraLedger<CameraPosition>? = null,
+    onReadyChange: (Boolean) -> Unit = {},
+) {
+    val cameraLedger = ledger ?: remember { MapCameraLedger(locateVersion) }
     // 지도를 띄운 뒤 생긴 오류(인증·렌더러·네트워크 등, Codex 리뷰). 생기면 지도 대신 안내를 보여 준다.
     var mapError by remember { mutableStateOf(false) }
     val reason = unavailable ?: if (mapError) "지도를 불러오지 못했어요" else null
     Box(modifier.background(Color(0xFFE9ECF0), RoundedCornerShape(32.dp))) {
-        if (reason == null) KakaoMapLayer(ui, drawVersion, routeVersion, { mapError = true }, Modifier.fillMaxSize())
+        if (reason == null) {
+            KakaoMapLayer(ui, drawVersion, routeVersion, locateVersion, cameraLedger, { mapError = true; onReadyChange(false) }, onReadyChange, Modifier.fillMaxSize())
+        }
 
         ui?.turnCard?.let { TurnCard(it.title, it.subtitle, Modifier.align(Alignment.TopStart).padding(20.dp)) }
         // 지도 안내 문구(R14-2·6·16)를 가운데에 둔다. 지도를 못 그리면 그 이유를 위에 함께 둔다.
@@ -83,7 +98,6 @@ fun GroupMap(ui: GroupMapUi?, drawVersion: Int, routeVersion: Int, unavailable: 
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) { messages.forEach { Overlay(it, Modifier) } }
-        ui?.arrivalCard?.let { ArrivalCard(it, Modifier.align(Alignment.BottomCenter).padding(20.dp)) }
     }
 }
 
@@ -93,18 +107,32 @@ fun GroupMap(ui: GroupMapUi?, drawVersion: Int, routeVersion: Int, unavailable: 
  * 먼저 가져간다(화면을 함께 스크롤한다는 R14-16을 우선). 지도 확대·이동은 넓은 창에서 온전히 된다.
  */
 @Composable
-private fun KakaoMapLayer(ui: GroupMapUi?, drawVersion: Int, routeVersion: Int, onError: () -> Unit, modifier: Modifier) {
+private fun KakaoMapLayer(
+    ui: GroupMapUi?,
+    drawVersion: Int,
+    routeVersion: Int,
+    locateVersion: Int,
+    ledger: MapCameraLedger<CameraPosition>,
+    onError: () -> Unit,
+    onReadyChange: (Boolean) -> Unit,
+    modifier: Modifier,
+) {
     val context = LocalContext.current
     var kakaoMap by remember { mutableStateOf<KakaoMap?>(null) }
-    // [그린 drawVersion, 맞춘 routeVersion]. 지도가 새로 준비되면 처음부터 다시 그린다.
-    val done = remember { intArrayOf(-1, -1) }
+    // 그린 drawVersion. 지도가 새로 준비되면 처음부터 다시 그린다.
+    val done = remember { intArrayOf(-1) }
+    // 지도가 방금 준비됐는지. 카메라 장부가 "다시 만든 지도"를 알아보는 데 쓴다.
+    val fresh = remember { booleanArrayOf(false) }
     val mapView = remember { MapView(context) }
 
     // 시작과 생명주기 연결은 효과 안에서 한다(구성이 버려지면 시작하지 않게). 이미 RESUMED면 바로 resume한다(Codex 리뷰).
     DisposableEffect(mapView) {
         mapView.start(
             object : MapLifeCycleCallback() {
-                override fun onMapDestroy() { kakaoMap = null }
+                override fun onMapDestroy() {
+                    kakaoMap = null
+                    onReadyChange(false)
+                }
                 override fun onMapError(error: Exception) {
                     Log.i(TAG, "카카오맵 오류: $error")
                     onError()
@@ -114,8 +142,11 @@ private fun KakaoMapLayer(ui: GroupMapUi?, drawVersion: Int, routeVersion: Int, 
                 override fun onMapReady(map: KakaoMap) {
                     Log.i(TAG, "카카오맵 준비됨")
                     done[0] = -1
-                    done[1] = -1
+                    fresh[0] = true
+                    // 사용자가 옮긴 카메라 자리를 기억해 둔다(다시 만든 지도에서 되돌리려고).
+                    map.setOnCameraMoveEndListener { _, position, _ -> ledger.save(position) }
                     kakaoMap = map
+                    onReadyChange(true)
                 }
             },
         )
@@ -131,6 +162,8 @@ private fun KakaoMapLayer(ui: GroupMapUi?, drawVersion: Int, routeVersion: Int, 
         if (lifecycle?.currentState?.isAtLeast(Lifecycle.State.RESUMED) == true) mapView.resume()
         onDispose {
             lifecycle?.removeObserver(observer)
+            kakaoMap?.let { map -> runCatching { map.cameraPosition }.getOrNull()?.let(ledger::save) }
+            onReadyChange(false)
             mapView.finish()
         }
     }
@@ -145,11 +178,21 @@ private fun KakaoMapLayer(ui: GroupMapUi?, drawVersion: Int, routeVersion: Int, 
                 draw(map, ui)
             }
             // R14-17: 새 길찾기 결과가 온 직후 한 번만 맞춘다. 사용자가 움직인 뒤에도 새 경로면 다시 맞춘다.
+            // 같은 경로로 지도가 다시 만들어졌으면 맞추지 않고 떠날 때의 자리로 되돌린다(R14-8, Codex 리뷰).
             val route = ui?.lines?.firstOrNull { it.color == LineColor.BLUE }?.points
-            if (route != null && routeVersion != done[1]) {
-                done[1] = routeVersion
-                val points = (route + ui.markers.map { it.position }).map { LatLng.from(it.latitude, it.longitude) }
-                map.moveCamera(CameraUpdateFactory.fitMapPoints(points.toTypedArray(), FIT_PADDING))
+            val wasFresh = fresh[0]
+            fresh[0] = false
+            when (ledger.next(routeVersion, hasRoute = route != null, fresh = wasFresh)) {
+                CameraAction.FIT_ROUTE -> {
+                    val points = (route.orEmpty() + ui?.markers.orEmpty().map { it.position }).map { LatLng.from(it.latitude, it.longitude) }
+                    map.moveCamera(CameraUpdateFactory.fitMapPoints(points.toTypedArray(), FIT_PADDING))
+                }
+                CameraAction.RESTORE -> ledger.saved?.let { map.moveCamera(CameraUpdateFactory.newCameraPosition(it)) }
+                CameraAction.NONE -> Unit
+            }
+            // R14-16 [내 위치]: 사용자가 누를 때만, 애니메이션 없이 가운데로 옮긴다(확대 수준은 그대로).
+            if (ledger.locate(locateVersion)) {
+                ui?.myPoint?.let { map.moveCamera(CameraUpdateFactory.newCenterPosition(LatLng.from(it.latitude, it.longitude))) }
             }
         },
     )
@@ -250,15 +293,6 @@ private fun TurnCard(title: String, subtitle: String?, modifier: Modifier) {
         Text(title, fontSize = 40.sp, fontWeight = FontWeight.ExtraBold, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
         subtitle?.let { Text(it, fontSize = 28.sp, color = Palette.OnNightSoft, maxLines = 1, overflow = TextOverflow.Ellipsis) }
     }
-}
-
-/** SPEC R14-7·15: 도착 카드(지도 아래쪽). */
-@Composable
-private fun ArrivalCard(text: String, modifier: Modifier) {
-    Row(
-        modifier.background(Palette.Card, RoundedCornerShape(24.dp)).padding(horizontal = 32.dp, vertical = 18.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) { Text(text, fontSize = 32.sp, fontWeight = FontWeight.ExtraBold, color = Palette.Ink, maxLines = 1, overflow = TextOverflow.Ellipsis) }
 }
 
 /** 지도 가운데 안내 문구(R14-2·6·16). */
