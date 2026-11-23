@@ -18,7 +18,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import com.car.convoy.data.AccidentController
 import com.car.convoy.data.Cancellable
 import com.car.convoy.data.FamilyController
@@ -177,7 +179,8 @@ class MainActivity : ComponentActivity() {
     // ---- 작업 25 앞차 따라가기(R12) ----
     private lateinit var follower: FollowNavigator
     private var myLocation: ReportLocation? = null
-    private var myLocationAt: Long? = null
+    /** 마지막으로 위치를 받은 시각. 화면의 [내 위치] 잠김(R14-12·16)이 이 값으로 바뀌므로 Compose 상태로 둔다(작업 40 Codex 리뷰). */
+    private var myLocationAt: Long? by mutableStateOf(null)
 
     // ---- SPEC R14, 작업 35: 일행 지도(그룹 경로와 앞뒤 관계) ----
     private val routeIoDelegate = lazy { Executors.newSingleThreadExecutor() }
