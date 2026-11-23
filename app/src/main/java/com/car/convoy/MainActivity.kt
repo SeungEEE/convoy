@@ -30,8 +30,14 @@ import com.car.convoy.data.MainThreadScheduler
 import com.car.convoy.data.navi.NaviHelperAdapter
 import com.car.convoy.data.vehicle.VehicleSource
 import com.car.convoy.domain.Destination
+import com.car.convoy.domain.AppScreen
 import com.car.convoy.domain.DriveView
-import com.car.convoy.domain.driveEntryScreen
+import com.car.convoy.domain.HomeTab
+import com.car.convoy.domain.ScreenEvent
+import com.car.convoy.domain.friendLocateEnabled
+import com.car.convoy.domain.redrawIntervalSeconds
+import com.car.convoy.domain.screenAfter
+import com.car.convoy.ui.friendMapUi
 import com.car.convoy.ui.MapCameraLedger
 import com.car.convoy.ui.locateEnabled
 import com.kakao.vectormap.camera.CameraPosition
@@ -90,6 +96,7 @@ private enum class Screen { HOME, DRIVE, FOLLOW }
 /**
  * 작업 23 홈(R2-5, R4-5)과 그룹 주행(R11-20). 나는 리더이고 실제 SDK를 쓰며, 그룹 멤버는 가상 인물이다(R11-18).
  * adb 시연 명령(녹화·자동 확인용): adb shell am start -n com.car.convoy/.MainActivity --es demo <명령>
+ *   탭(R2-5, 작업 40): tab:map|group|family|settings
  *   홈: invite:p1, accept, decline(첫 수락 대기에 응답), start(목적지로 함께), disband, status:busy
  *   가족(R9): family:p1, faccept, fdecline, frelease
  *   앞차 따라가기(R12): lead:p1, laccept, ldecline, move:100, unfollow
@@ -105,10 +112,39 @@ private val DEMO_ROUTE_START = GeoPoint(37.4250, 127.0890)
 /** 에뮬레이터의 고정 위치(docs/sdk-findings.md). 여기서 50m 안일 때만 시연 출발점을 쓴다. */
 private val EMULATOR_FIXED_LOCATION = GeoPoint(37.4127, 127.0947)
 
+/**
+ * SPEC R14-12: 시연용 친구 위치(에뮬레이터 내 위치 둘레의 고정 좌표, 움직이지 않는다). 실서비스에서는 서버에서 받는다.
+ * 서준(오프라인)은 좌표가 있어도 목록에 없으므로 찍지 않는다(friendMarkerKind).
+ */
+private val DEMO_FRIEND_POSITIONS = mapOf(
+    "p1" to GeoPoint(37.4168, 127.0991),
+    "p2" to GeoPoint(37.4089, 127.1012),
+    "p3" to GeoPoint(37.4183, 127.0878),
+    "p4" to GeoPoint(37.4071, 127.0893),
+    "p5" to GeoPoint(37.4110, 127.0850),
+)
+
 class MainActivity : ComponentActivity() {
 
     private val scheduler = MainThreadScheduler()
     private val screen = mutableStateOf(Screen.HOME)
+    /** SPEC R2-5: 첫 화면의 지금 탭. 처음 값은 onCreate에서 screenAfter(APP_START)로 정한다. */
+    private val homeTab = mutableStateOf(HomeTab.FRIEND_MAP)
+
+    // ---- SPEC R14-12, 작업 40: 친구 지도 ----
+    private val friendMap = mutableStateOf<com.car.convoy.ui.GroupMapUi?>(null)
+    private val friendDrawVersion = mutableIntStateOf(0)
+    /** [친구 지도]의 [내 위치]를 누를 때마다 1씩 늘린다. 함께 주행 지도의 번호와 따로 센다(한쪽 누름이 다른 지도를 옮기지 않게). */
+    private val friendLocateVersion = mutableIntStateOf(0)
+    private val friendMapReady = mutableStateOf(false)
+    /** 친구 지도의 카메라 장부. 앱 프로세스 동안 하나다(처음 한 번만 마커에 맞추고, 그 뒤에는 떠날 때 자리로 되돌린다). */
+    private val friendLedger = MapCameraLedger<CameraPosition>()
+    /** [친구 지도] 탭을 이번에 연 시각(friendLocateEnabled). */
+    private var friendTabOpenedAt = 0L
+    /** 지난번에 [친구 지도] 탭이 보였는가. 안 보이다가 보이면 "탭을 연" 것이다. */
+    private var friendTabShown = false
+    private var friendTicker: Cancellable? = null
+    private var resumed = false
     private val homeModel = mutableStateOf<HomeScreenModel?>(null)
     private val groupModel = mutableStateOf<GroupScreenModel?>(null)
     private val accidentModel = mutableStateOf<AccidentScreenModel?>(null)
@@ -221,7 +257,11 @@ class MainActivity : ComponentActivity() {
             },
             locationReceived = { loc ->
                 val at = scheduler.nowMillis()
-                scheduler.post { myLocation = loc; myLocationAt = at; accident.onLocation(loc); reloadMapIfNeeded() }
+                scheduler.post {
+                    myLocation = loc; myLocationAt = at; accident.onLocation(loc); reloadMapIfNeeded()
+                    // R14-12: 친구 지도에 "나"가 아직 없으면 다음 주기를 기다리지 않고 바로 찍는다.
+                    if (friendTabVisible() && friendMap.value?.myPoint == null) drawFriendMap()
+                }
             },
             log = ::log,
             naviDestination = { d -> scheduler.post { naviDestination = d; refresh() } },
@@ -283,7 +323,7 @@ class MainActivity : ComponentActivity() {
                     if (screen.value == Screen.FOLLOW && followUi != null) {
                         FollowScreen(
                             model = followUi,
-                            onHome = ::goHome,
+                            onHome = { goHome(ScreenEvent.FOLLOW_HOME) },
                             onStop = ::stopFollow,
                             onRetry = { follower.retry(); refresh() },
                             onDemoMove = ::moveLeader,
@@ -301,7 +341,7 @@ class MainActivity : ComponentActivity() {
                             onOpenNavi = naviLaunchIntent()?.let { intent -> { openNavi(intent) } },
                             headerExtra = familyChip,
                             belowMembers = { accidentUi?.sentCard?.let { c -> SentFamilyCard(c, sentTo) } },
-                            onHome = ::goHome,
+                            onHome = { goHome(ScreenEvent.GROUP_SCREEN_HOME) },
                             onEnd = ::endDrive,
                             waypoint = waypointModel.value,
                             onProposeWaypoint = ::proposeWaypoint,
@@ -339,8 +379,17 @@ class MainActivity : ComponentActivity() {
                                 onFollow = ::requestFollow,
                                 onDemoFollowAccept = { respondFollow(true) },
                                 onDemoFollowDecline = { respondFollow(false) },
-                                // 시안: 홈은 가족 카드가 있어 머리줄 가족 칩을 두지 않는다.
                                 belowFamily = { accidentUi?.sentCard?.let { c -> SentFamilyCard(c, sentTo) } },
+                                // SPEC R2-5, R14-12, 작업 40: 탭과 친구 지도
+                                tab = homeTab.value,
+                                onTab = { t -> homeTab.value = t; log("탭: $t"); onScreenChanged() },
+                                friendMap = { m ->
+                                    GroupMap(friendMap.value, friendDrawVersion.intValue, 0, mapUnavailable, m, friendLocateVersion.intValue, friendLedger) { ready ->
+                                        friendMapReady.value = ready
+                                    }
+                                },
+                                canLocate = canLocateFriend(),
+                                onLocate = { friendLocateVersion.intValue += 1; log("친구 지도: 내 위치로") },
                             )
                         }
                     }
@@ -350,6 +399,7 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        go(ScreenEvent.APP_START)
         refresh()
         runCatching { vehicle.start() }.onFailure { log("Vehicle 시작 실패: $it") }
         // 초기화 성공 콜백의 스레드는 보장되지 않으므로 메인 스레드로 옮긴다(GroupController는 한 스레드에서만 부른다).
@@ -358,11 +408,17 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        resumed = true
+        // R2-5: 백그라운드에서 돌아오면 화면을 그대로 둔다(KEEP).
+        go(ScreenEvent.RETURN_FROM_BACKGROUND)
         queryDestinationSources()
     }
 
     override fun onPause() {
         cancelRequeries()
+        resumed = false
+        // R14-12: 화면이 가려지면 친구 지도의 위치 요청을 멈춘다. 돌아오면 다시 시작한다(탭을 연 시각은 그대로).
+        onScreenChanged()
         super.onPause()
     }
 
@@ -396,6 +452,8 @@ class MainActivity : ComponentActivity() {
         // 작업 35: 지도 위치 요청 주기와 길찾기 실행기를 정리한다(Codex 리뷰).
         mapTicker?.cancel()
         mapTicker = null
+        friendTicker?.cancel()
+        friendTicker = null
         if (routeIoDelegate.isInitialized()) routeIo.shutdownNow()
         vehicle.stop()
         navi.stop()
@@ -463,29 +521,92 @@ class MainActivity : ComponentActivity() {
         startMapTicker()
         driveStartedAt = scheduler.nowMillis()
         cameraLedger = MapCameraLedger(locateVersion.intValue)
-        // R14-18: 새 세션은 목적지가 없으니 그룹 화면부터 연다.
-        driveView.value = driveEntryScreen(hasDestination = drive?.session?.destination != null)
-        screen.value = Screen.DRIVE
+        // R2-5, R14-18: 새 세션은 목적지가 없으니 그룹 화면부터 연다.
+        go(ScreenEvent.START_DESTINATION)
         queryDestinationSources()
         refresh()
     }
 
     private fun resume() {
-        drive?.let { d ->
-            // R14-18: 다시 들어올 때도 목적지가 있으면 주행 화면, 없으면 그룹 화면.
-            driveView.value = driveEntryScreen(hasDestination = d.session.destination != null)
-            screen.value = Screen.DRIVE
-        }
-        if (follower.active) { screen.value = Screen.FOLLOW; startFollowTicker() }
+        // R2-5, R14-18: 다시 들어올 때도 목적지가 있으면 주행 화면, 없으면 그룹 화면.
+        if (drive != null) go(ScreenEvent.RESUME_DRIVE)
+        // R12: 따라가기 중 [진행 중인 주행으로]는 따라가기 화면이다(screenAfter 밖).
+        if (follower.active) { screen.value = Screen.FOLLOW; onScreenChanged(); startFollowTicker() }
         queryDestinationSources()
         refresh()
     }
 
-    /** R11-20 [홈으로]: 주행은 이어 둔다. */
-    private fun goHome() {
-        screen.value = Screen.HOME
+    /** R11-20, R12-4 [홈으로]: 주행은 이어 둔 채 [친구 지도] 탭으로 간다(R2-5 screenAfter). */
+    private fun goHome(event: ScreenEvent) {
+        go(event)
         refresh()
     }
+
+    /** SPEC R2-5: 화면은 screenAfter 표대로만 바꾼다. */
+    private fun go(event: ScreenEvent) {
+        val next = screenAfter(event, hasDestination = drive?.session?.destination != null)
+        when (next) {
+            AppScreen.KEEP -> Unit
+            AppScreen.FRIEND_MAP -> { screen.value = Screen.HOME; homeTab.value = HomeTab.FRIEND_MAP }
+            AppScreen.DRIVE_MAP -> { driveView.value = DriveView.MAP; screen.value = Screen.DRIVE }
+            AppScreen.DRIVE_GROUP -> { driveView.value = DriveView.GROUP; screen.value = Screen.DRIVE }
+        }
+        if (next != AppScreen.KEEP) log("화면: $event → $next")
+        onScreenChanged()
+    }
+
+    // ---- 친구 지도(R14-12, 작업 40) ----
+
+    private fun friendTabVisible(): Boolean = screen.value == Screen.HOME && homeTab.value == HomeTab.FRIEND_MAP
+
+    /**
+     * 화면이나 탭이 바뀔 때 부른다. [친구 지도] 탭이 안 보이다가 보이면 그 시각을 "탭을 연 시각"으로 적는다(friendLocateEnabled).
+     * 탭이 보이고 화면이 앞에 있는 동안만 친구 지도 주기를 돌린다(탭을 떠나면 멈춘다).
+     */
+    private fun onScreenChanged() {
+        val shown = friendTabVisible()
+        if (shown && !friendTabShown) {
+            friendTabOpenedAt = scheduler.nowMillis()
+            drawFriendMap()
+        }
+        friendTabShown = shown
+        if (shown && resumed) { if (friendTicker == null) startFriendTicker() }
+        else { friendTicker?.cancel(); friendTicker = null }
+    }
+
+    /**
+     * SPEC R14-12: [친구 지도]가 보이는 동안 2초마다 내 위치를 묻는다. 진행 중인 함께 주행이 있으면 그 주행의 폴링(R14-3)을,
+     * 사고 확인 중이면 사고 확인의 폴링을 그대로 쓴다. 마커는 정차 중 2초, 주행 중 10초마다 다시 그린다(R14-8).
+     * 앞차 따라가기의 폴링은 따라가기 화면에서만 돌므로, 이 탭에서는 여기서 묻는다.
+     */
+    private fun startFriendTicker() {
+        friendTicker?.cancel()
+        var tick = 0
+        fun loop() {
+            if (!friendTabVisible() || !resumed) { friendTicker = null; return }
+            if (drive == null && !accident.checking) navi.requestLocation()
+            if (tick % (redrawIntervalSeconds(gear) / 2) == 0) drawFriendMap()
+            tick++
+            friendTicker = scheduler.schedule(2_000) { loop() }
+        }
+        loop()
+    }
+
+    /** 친구 지도 값을 다시 만든다. 바뀌었을 때만 drawVersion을 올려 지도를 다시 그린다. */
+    private fun drawFriendMap() {
+        val ui = friendMapUi(PEOPLE, DEMO_FRIEND_POSITIONS, roster.members, myLocation?.let { GeoPoint(it.latitude, it.longitude) })
+        if (ui != friendMap.value) {
+            friendMap.value = ui
+            friendDrawVersion.intValue += 1
+        }
+    }
+
+    /** SPEC R14-12 [내 위치]: 이번에 탭을 연 뒤 내 위치를 받았고, 지도가 준비되어 있고(오류 없음), 내 위치가 있을 때만. */
+    private fun canLocateFriend(): Boolean = friendLocateEnabled(
+        friendTabOpenedAt, myLocationAt,
+        mapReady = mapUnavailable == null && friendMapReady.value,
+        hasMyPoint = friendMap.value?.myPoint != null,
+    )
 
     /** R11-20, R11-22 [주행 끝내기]: 세션을 버리고 주행 "없음"으로. 그룹은 남는다. 주행 중에도 된다(R10). */
     private fun endDrive() {
@@ -503,7 +624,7 @@ class MainActivity : ComponentActivity() {
         driveStartedAt = null
         cancelRequeries()
         driveMembers = emptyList()
-        screen.value = Screen.HOME
+        go(ScreenEvent.END_DRIVE)
         refresh()
     }
 
@@ -537,6 +658,7 @@ class MainActivity : ComponentActivity() {
         if (me.follow?.state == FollowState.ACTIVE) {
             follower.start(names[link.friendId] ?: link.friendId)
             screen.value = Screen.FOLLOW
+            onScreenChanged()
             startFollowTicker()
         }
         refresh()
@@ -555,7 +677,7 @@ class MainActivity : ComponentActivity() {
         follower.stop()
         followTicker?.cancel()
         followTicker = null
-        screen.value = Screen.HOME
+        go(ScreenEvent.FOLLOW_STOP)
         refresh()
     }
 
@@ -709,7 +831,12 @@ class MainActivity : ComponentActivity() {
                 "fdecline" -> respondFamily(false)
                 "frelease" -> releaseFamily()
                 "status" -> me.setMyStatus(UserStatus.valueOf(arg!!.uppercase()))
-                "home" -> goHome()
+                "home" -> goHome(if (screen.value == Screen.FOLLOW) ScreenEvent.FOLLOW_HOME else ScreenEvent.GROUP_SCREEN_HOME)
+                "tab" -> {
+                    homeTab.value = when (arg) { "group" -> HomeTab.GROUP; "family" -> HomeTab.FAMILY; "settings" -> HomeTab.SETTINGS; else -> HomeTab.FRIEND_MAP }
+                    log("탭: ${homeTab.value}")
+                    onScreenChanged()
+                }
                 "resume" -> resume()
                 "end" -> endDrive()
                 "dest" -> chooseDestination(PRESET_DESTINATIONS.first { it.name == arg })
@@ -769,6 +896,7 @@ class MainActivity : ComponentActivity() {
             )
         }
         if (d == null && screen.value == Screen.DRIVE) screen.value = Screen.HOME
+        onScreenChanged()
         waypointModel.value = d?.let {
             val w = it.waypoints
             waypointPanelModel(
