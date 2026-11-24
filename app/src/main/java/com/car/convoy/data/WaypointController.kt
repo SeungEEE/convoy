@@ -73,11 +73,11 @@ class WaypointController(
     private var myLastAddAt: Long? = null
     private var closed = false
 
-    /** SPEC R13-1~4: 제안한다. OK가 아니면 아무것도 바꾸지 않는다. 리더의 제안은 바로 보낸다. */
-    fun propose(proposerId: String, place: Destination): ProposalCheck {
+    /** SPEC R13-3·4, R14-20: [place]를 지금 제안할 수 있는지만 본다. 아무것도 바꾸지 않는다(합류 비교의 [경유지로 제안] 잠김). */
+    fun check(place: Destination): ProposalCheck {
         if (closed) return ProposalCheck.NOT_ACTIVE
         val destination = session.destination
-        val result = checkProposal(
+        return checkProposal(
             group = session.status,
             hasDestination = destination != null,
             waypointCount = approved.size,
@@ -86,6 +86,11 @@ class WaypointController(
             hasPending = proposal?.state == ProposalState.PENDING,
             applying = apply.values.any { it == ApplyState.SENT },
         )
+    }
+
+    /** SPEC R13-1~4: 제안한다. OK가 아니면 아무것도 바꾸지 않는다. 리더의 제안은 바로 보낸다. */
+    fun propose(proposerId: String, place: Destination): ProposalCheck {
+        val result = check(place)
         if (result != ProposalCheck.OK) return result
         if (proposerId == myId) {
             proposal = WaypointProposal(proposerId, place, ProposalState.APPROVED)

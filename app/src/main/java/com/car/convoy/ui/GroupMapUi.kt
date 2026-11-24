@@ -14,12 +14,13 @@ import com.car.convoy.domain.turnCardText
 import java.time.ZoneId
 
 /** SPEC R14-6·7: 내 경로 전체는 파랑, 앞 멤버까지는 초록, 뒤 멤버부터 나까지는 주황. */
-enum class LineColor { BLUE, GREEN, ORANGE }
+enum class LineColor { BLUE, GREEN, ORANGE, YELLOW }
 
 /** SPEC R14-6: 마커 색. 나란히·다른 길·위치 오래됨·내 위치 모름은 회색(R14-16). [GROUP]은 친구 지도의 그룹 멤버(남색, R14-12). */
 enum class MarkerTone { ME, AHEAD, BEHIND, GRAY, GROUP }
 
-enum class PinKind { DESTINATION, WAYPOINT }
+/** [CANDIDATE]는 합류 비교의 후보(R14-20). */
+enum class PinKind { DESTINATION, WAYPOINT, CANDIDATE }
 
 data class MapLine(val points: List<GeoPoint>, val color: LineColor)
 
@@ -46,6 +47,12 @@ data class GroupMapUi(
     val myPoint: GeoPoint? = null,
     /** SPEC R14-12: 경로가 없을 때 카메라를 마커에 맞춘다(친구 지도). 맞추는 것은 처음 한 번뿐이다(카메라 장부). */
     val fitMarkers: Boolean = false,
+    /**
+     * SPEC R14-20: [explicitFit]이면 카메라는 파랑 경로가 아니라 [fitPoints]에만 맞춘다(합류 비교의 노랑 경로와 후보).
+     * 결과가 다 오기 전에는 [fitPoints]가 null이라 맞추지 않는다.
+     */
+    val fitPoints: List<GeoPoint>? = null,
+    val explicitFit: Boolean = false,
 )
 
 /**
