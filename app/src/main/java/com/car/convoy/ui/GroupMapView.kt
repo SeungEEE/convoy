@@ -57,6 +57,10 @@ private val SECTION_GREEN = Color(0xFF1E9E57)
 private val SECTION_ORANGE = Color(0xFFE8770E)
 private val MARKER_GRAY = Color(0xFF7A8492)
 
+/** SPEC R14-11·20: 합류 비교에서 후보까지 가는 경로(노랑)와 후보 핀(흰 글자가 읽히는 진한 황토색). */
+private val APPROACH_YELLOW = Color(0xFFF2B705)
+private val CANDIDATE_PIN = Color(0xFF8A5A00)
+
 /** 카메라를 경로에 맞출 때 가장자리 여백(px). 160dpi라 dp와 같다. */
 private const val FIT_PADDING = 120
 
@@ -182,7 +186,8 @@ private fun KakaoMapLayer(
             // R14-12: 친구 지도는 경로가 없어 마커가 처음 생길 때 한 번 마커에 맞춘다(같은 장부, 번호는 그대로).
             val route = ui?.lines?.firstOrNull { it.color == LineColor.BLUE }?.points
             val markers = ui?.markers.orEmpty().map { it.position }
-            val fitTarget = route?.let { it + markers } ?: markers.takeIf { ui?.fitMarkers == true && it.isNotEmpty() }
+            val fitTarget = if (ui?.explicitFit == true) ui.fitPoints?.takeIf { it.isNotEmpty() }
+                else route?.let { it + markers } ?: markers.takeIf { ui?.fitMarkers == true && it.isNotEmpty() }
             val wasFresh = fresh[0]
             fresh[0] = false
             when (ledger.next(routeVersion, hasRoute = fitTarget != null, fresh = wasFresh)) {
@@ -216,6 +221,7 @@ private fun draw(map: KakaoMap, ui: GroupMapUi?) {
             LineColor.BLUE -> ROUTE_BLUE to 16f
             LineColor.GREEN -> SECTION_GREEN to 20f
             LineColor.ORANGE -> SECTION_ORANGE to 20f
+            LineColor.YELLOW -> APPROACH_YELLOW to 14f
         }
         val style = RouteLineStyles.from(RouteLineStyle.from(width, color.toArgb(), 3f, Color.White.toArgb()))
         val segment = RouteLineSegment.from(line.points.map { LatLng.from(it.latitude, it.longitude) }, style)
@@ -223,7 +229,11 @@ private fun draw(map: KakaoMap, ui: GroupMapUi?) {
     }
 
     ui.pins.forEach { pin ->
-        val bitmap = pinBitmap(pin.name, if (pin.kind == PinKind.DESTINATION) Palette.Ink else Palette.Demo)
+        val bitmap = pinBitmap(pin.name, when (pin.kind) {
+            PinKind.DESTINATION -> Palette.Ink
+            PinKind.WAYPOINT -> Palette.Demo
+            PinKind.CANDIDATE -> CANDIDATE_PIN
+        })
         labels.addLabel(
             LabelOptions.from(LatLng.from(pin.position.latitude, pin.position.longitude))
                 .setStyles(LabelStyles.from(LabelStyle.from(bitmap).setAnchorPoint(0.5f, 1f)))

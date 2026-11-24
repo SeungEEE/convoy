@@ -33,6 +33,17 @@ import com.car.convoy.data.navi.NaviHelperAdapter
 import com.car.convoy.data.vehicle.VehicleSource
 import com.car.convoy.domain.Destination
 import com.car.convoy.domain.AppScreen
+import com.car.convoy.domain.DriverAction
+import com.car.convoy.domain.canOpenMeetingCompare
+import com.car.convoy.domain.canPerform
+import com.car.convoy.domain.proposalNotice
+import com.car.convoy.data.MeetingCompareController
+import com.car.convoy.data.MeetingMember
+import com.car.convoy.ui.MeetingCompareModel
+import com.car.convoy.ui.MeetingCompareScreen
+import com.car.convoy.ui.meetingCandidates
+import com.car.convoy.ui.meetingMapUi
+import com.car.convoy.ui.meetingRowsUi
 import com.car.convoy.domain.DriveView
 import com.car.convoy.domain.HomeTab
 import com.car.convoy.domain.ScreenEvent
@@ -107,6 +118,7 @@ private enum class Screen { HOME, DRIVE, FOLLOW }
  *   일행 지도(R14, 작업 35): mapmove:p1(경로를 따라 300m 앞으로), mapfreeze:p3(위치 갱신 멈춤), maplog
  *   경유지(R13, 작업 31): wpropose:p3(가상 멤버 제안, 덕평휴게소) | wpropose:me,pangyo(내가 제안 = 바로 보냄),
  *     wapprove, wreject, wcancel, wfail:p3(다음 전달 실패), wresend
+ *   합류 장소 비교(R14-20, 작업 37): meetopen, meet:<후보 이름>, meetpropose, meetclose
  */
 /** SPEC R14-3: 시연용 그룹 경로 출발점(에뮬레이터 내 위치 북서쪽). 이 점 → 나 → 목적지로 찾아 "뒤" 멤버 자리를 만든다. */
 private val DEMO_ROUTE_START = GeoPoint(37.4250, 127.0890)
@@ -191,6 +203,19 @@ class MainActivity : ComponentActivity() {
     private var groupMap: GroupMapController? = null
     private var mapTicker: Cancellable? = null
     private var mapLoadedFor: Pair<Destination, List<Destination>>? = null
+
+    // ---- SPEC R14-20, 작업 37: 합류 장소 비교(그룹 화면 위에 덮는 화면) ----
+    private val meetingOpen = mutableStateOf(false)
+    private val meetingModel = mutableStateOf<MeetingCompareModel?>(null)
+    private val meetingMap = mutableStateOf<com.car.convoy.ui.GroupMapUi?>(null)
+    private val meetingDrawVersion = mutableIntStateOf(0)
+    /** 받아들인 후보 고르기 번호. 비교 지도의 카메라는 이 번호마다 결과가 다 온 뒤 한 번 맞춘다(R14-20). */
+    private val meetingCameraVersion = mutableIntStateOf(0)
+    /** 비교 화면을 열 때마다 새로 만든다(지난번 카메라 자리를 쓰지 않게). */
+    private var meetingLedger = MapCameraLedger<CameraPosition>()
+    /** 후보를 고른 순간의 멤버 위치(마커). */
+    private var meetingStarts: List<Pair<String, GeoPoint?>> = emptyList()
+    private val meeting by lazy { MeetingCompareController(routes) { refresh() } }
 
     // ---- SPEC R14-6~8·13~17, 작업 36: 함께 주행 지도 화면 ----
     private val mapUi = mutableStateOf<GroupMapUi?>(null)
@@ -332,6 +357,16 @@ class MainActivity : ComponentActivity() {
                             onDemoMove = ::moveLeader,
                             headerExtra = familyChip,
                         )
+                    } else if (screen.value == Screen.DRIVE && group != null && meetingOpen.value && meetingModel.value != null) {
+                        // SPEC R14-20: 그룹 화면 위에 덮는 화면. 덮는 동안 밑의 그룹 화면은 그리지 않는다(누름이 새지 않게).
+                        MeetingCompareScreen(
+                            model = meetingModel.value!!,
+                            map = { m -> GroupMap(meetingMap.value, meetingDrawVersion.intValue, meetingCameraVersion.intValue, mapUnavailable, m, 0, meetingLedger) },
+                            onClose = ::closeMeeting,
+                            onChoose = ::chooseMeetingCandidate,
+                            onPropose = ::proposeMeeting,
+                            headerExtra = familyChip,
+                        )
                     } else if (screen.value == Screen.DRIVE && group != null) {
                         GroupScreen(
                             model = group,
@@ -363,6 +398,9 @@ class MainActivity : ComponentActivity() {
                             mapUi = mapUi.value,
                             canLocate = canLocate(),
                             onLocate = { locateVersion.intValue += 1; log("내 위치로") },
+                            // SPEC R14-20, 작업 37: 합류 장소 비교
+                            onOpenCompare = ::openMeeting,
+                            canOpenCompare = drive?.let { canOpenMeetingCompare(it.session.status, gear) } ?: false,
                         )
                     } else {
                         homeModel.value?.let {
@@ -857,6 +895,10 @@ class MainActivity : ComponentActivity() {
                 "wcancel" -> drive?.waypoints?.cancel()
                 "wfail" -> drive?.server?.failNextWaypoint(arg!!)
                 "wresend" -> drive?.waypoints?.resend()
+                "meetopen" -> openMeeting()
+                "meet" -> meetingModel.value?.candidates?.firstOrNull { it.name == arg }?.let { chooseMeetingCandidate(it) } ?: log("후보 없음: $arg")
+                "meetpropose" -> proposeMeeting()
+                "meetclose" -> closeMeeting()
                 "airbag" -> accident.onTelltales(
                     listOf(TelltaleReading(TelltaleType.AIRBAG, if (arg == "on") TelltaleState.ON else TelltaleState.OFF)),
                 )
@@ -899,6 +941,8 @@ class MainActivity : ComponentActivity() {
             )
         }
         if (d == null && screen.value == Screen.DRIVE) screen.value = Screen.HOME
+        if (d == null) meetingOpen.value = false
+        refreshMeeting()
         onScreenChanged()
         waypointModel.value = d?.let {
             val w = it.waypoints
@@ -924,16 +968,107 @@ class MainActivity : ComponentActivity() {
     private fun proposeWaypoint(place: Destination) {
         val result = drive?.waypoints?.propose(ME, place) ?: return
         log("경유지 제안 ${place.name} → $result")
-        waypointMessage = when (result) {
-            ProposalCheck.OK -> null
-            ProposalCheck.FULL -> "경유지는 2개까지 넣을 수 있어요"
-            ProposalCheck.PENDING_EXISTS -> "답하지 않은 요청이 있어요"
-            ProposalCheck.APPLYING -> "앞 경유지를 반영하는 중이에요"
-            ProposalCheck.SAME_AS_DESTINATION -> "목적지와 같은 곳이에요"
-            ProposalCheck.ALREADY_WAYPOINT -> "이미 들르는 곳이에요"
-            ProposalCheck.NO_DESTINATION, ProposalCheck.NOT_ACTIVE -> "지금은 경유지를 넣을 수 없어요"
-        }
+        waypointMessage = proposalNotice(result)
         refresh()
+    }
+
+    // ---- 합류 장소 비교(R14-20, 작업 37) ----
+
+    /** [합류 장소 비교]: 그룹이 진행 중이고 정차 중일 때만 연다. 덮는 화면이라 screenAfter의 전이가 아니다(R2-5). */
+    private fun openMeeting() {
+        val d = drive ?: return
+        if (!canOpenMeetingCompare(d.session.status, gear)) return
+        meeting.clear()
+        meetingLedger = MapCameraLedger()
+        meetingStarts = emptyList()
+        meetingOpen.value = true
+        log("합류 장소 비교 열기")
+        refresh()
+    }
+
+    /** [닫기]: 덮개를 걷으면 그룹 화면이 그대로 보인다. 진행 중인 길찾기 응답은 버린다. */
+    private fun closeMeeting() {
+        meetingOpen.value = false
+        meeting.clear()
+        log("합류 장소 비교 닫기")
+        refresh()
+    }
+
+    /**
+     * SPEC R14-20: 후보를 고르면 그 순간의 위치로 멤버마다 길찾기를 부른다. 시연 멤버는 그룹 경로 위 위치(R14-3)를,
+     * 그룹 경로가 없으면(목적지 없음, 찾는 중, 실패) 친구 지도의 시연 좌표(R14-12)를 쓴다.
+     */
+    private fun chooseMeetingCandidate(candidate: Destination) {
+        val d = drive ?: return
+        if (!canPerform(DriverAction.PROPOSE_WAYPOINT, gear)) return
+        val mePoint = myLocation?.let { GeoPoint(it.latitude, it.longitude) }
+        val snap = groupMap?.snapshot(mePoint, myLocationAt)
+        val onRoute = snap != null && snap.route.isNotEmpty()
+        val starts = driveMembers.map { id ->
+            id to when {
+                id == ME -> mePoint
+                onRoute -> snap!!.members.firstOrNull { it.id == id }?.position
+                else -> DEMO_FRIEND_POSITIONS[id]
+            }
+        }
+        val accepted = meeting.select(
+            candidate,
+            starts.map { (id, p) -> MeetingMember(id, p) },
+            d.session.destination?.let { GeoPoint(it.latitude, it.longitude) },
+            d.waypoints.waypoints.map { GeoPoint(it.latitude, it.longitude) },
+            // 표의 "도착" 시각은 벽시계로 잰다. scheduler.nowMillis()는 부팅 후 경과 시간이다(arrivalCardText와 같다).
+            System.currentTimeMillis(),
+        )
+        if (accepted) meetingStarts = starts
+        log("합류 비교 후보 ${candidate.name} ${if (accepted) "길찾기" else "계산 중이라 무시"} (위치 ${starts.count { it.second != null }}/${starts.size}${if (onRoute) "" else ", 시연 좌표"})")
+        refresh()
+    }
+
+    /** [경유지로 제안]: 리더의 제안이라 바로 보낸다(R13-1). 되면 비교 화면을 닫고 그룹 화면의 경유지 상태 카드를 보여 준다. */
+    private fun proposeMeeting() {
+        val candidate = meeting.candidate ?: return
+        if (!canPerform(DriverAction.PROPOSE_WAYPOINT, gear)) return
+        val result = drive?.waypoints?.propose(ME, candidate) ?: return
+        log("합류 비교 경유지 제안 ${candidate.name} → $result")
+        if (result == ProposalCheck.OK) closeMeeting() else refresh()
+    }
+
+    /** 비교 화면 값을 다시 만든다. 지도는 값이 바뀔 때만 다시 그린다. */
+    private fun refreshMeeting() {
+        val d = drive
+        if (d == null || !meetingOpen.value) {
+            meetingModel.value = null
+            return
+        }
+        val picker = destinationPickerModel(naviDestination, d.session.destination, ignoredSuggestion, recentDestinations, bookmarkDestinations)
+        val candidate = meeting.candidate
+        val check = candidate?.let { d.waypoints.check(it) }
+        val canAct = canPerform(DriverAction.PROPOSE_WAYPOINT, gear)
+        meetingModel.value = MeetingCompareModel(
+            candidates = meetingCandidates(picker),
+            selected = candidate,
+            rows = if (candidate == null) emptyList()
+            else meetingRowsUi(meeting.rows, names, meeting.selectedAt ?: 0L, java.time.ZoneId.systemDefault(), meeting.hasDestination),
+            showDetour = meeting.hasDestination,
+            canChoose = canAct,
+            canPropose = candidate != null && canAct && check == ProposalCheck.OK,
+            notice = check?.let(::proposalNotice),
+        )
+        val ui = meetingMapUi(
+            groupRoute = groupMap?.routeSummary?.points.orEmpty(),
+            starts = meetingStarts,
+            myId = ME,
+            names = names,
+            rows = meeting.rows,
+            candidate = candidate,
+            destination = d.session.destination,
+            cameraReady = meeting.cameraReady,
+        )
+        if (ui != meetingMap.value) {
+            meetingMap.value = ui
+            meetingDrawVersion.intValue += 1
+        }
+        meetingCameraVersion.intValue = meeting.selectVersion
     }
 
     /** 작업 31 시연용 경유지(R13-12). 화면(작업 32) 전까지 adb로만 쓴다. */

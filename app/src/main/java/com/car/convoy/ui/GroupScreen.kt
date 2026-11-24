@@ -105,6 +105,11 @@ fun GroupScreen(
     /** [내 위치]를 누를 수 있는지(R14-16). */
     canLocate: Boolean = false,
     onLocate: () -> Unit = {},
+    // ---- SPEC R14-20, 작업 37: 합류 장소 비교 ----
+    /** [합류 장소 비교]. null이면 보이지 않는다. */
+    onOpenCompare: (() -> Unit)? = null,
+    /** 그룹이 진행 중이고 정차 중일 때만 누를 수 있다(canOpenMeetingCompare). */
+    canOpenCompare: Boolean = false,
 ) {
     val left: @Composable () -> Unit = {
         DestinationCard(model)
@@ -117,6 +122,7 @@ fun GroupScreen(
         belowMembers()
     }
     val right: @Composable () -> Unit = {
+        onOpenCompare?.let { CompareButton(canOpenCompare, it) }
         DestinationPicker(model, picker, onChooseDestination, onIgnoreSuggestion, onOpenNavi,
             onPropose = onProposeWaypoint.takeIf { waypoint?.canPropose == true })
         if (model.showRetry) RetryButton(onRetry)
@@ -270,6 +276,28 @@ internal fun HeaderRows(
             first()
             trail()
         }
+    }
+}
+
+/** SPEC R14-20: 목적지 고르기 위의 [합류 장소 비교]. 정차 중에만 누를 수 있다. */
+@Composable
+private fun CompareButton(enabled: Boolean, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = 104.dp)
+            .background(if (enabled) Card else Palette.DisabledFill, BigCard)
+            .border(2.dp, if (enabled) Palette.ButtonLine else Palette.DisabledFill, BigCard)
+            .clip(BigCard)
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 32.dp, vertical = 18.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Icon24(ConvoyIcon.Group, if (enabled) Accent else Soft, 36.dp, 2.4f)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text("합류 장소 비교", fontSize = 32.sp, fontWeight = FontWeight.ExtraBold, color = if (enabled) Accent else Soft)
+            Text(if (enabled) "후보에 멤버마다 언제 닿는지 비교해요" else "정차 중에만 열 수 있어요", fontSize = SMALL, color = Soft)
+        }
+        Icon24(ConvoyIcon.ChevronRight, Soft, 32.dp, 2.4f)
     }
 }
 
