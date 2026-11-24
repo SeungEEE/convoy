@@ -1,12 +1,21 @@
 package com.car.convoy.data.navi
 
+import ai.pleos.playground.navi.constants.WaypointCmdType
+import ai.pleos.playground.navi.constants.WaypointIndex
 import ai.pleos.playground.navi.data.BookmarkInfo
 import ai.pleos.playground.navi.data.CurrentLocationInfo
 import ai.pleos.playground.navi.data.DestinationInfo
+import ai.pleos.playground.navi.data.DrivingInfo
+import ai.pleos.playground.navi.data.DrivingState
+import ai.pleos.playground.navi.data.TBTInfo
+import com.car.convoy.domain.DrivingRemain
+import com.car.convoy.domain.TurnGuide
 import ai.pleos.playground.navi.data.RecentDestinationInfo
 import ai.pleos.playground.navi.data.DestinationArrivedInfo
 import ai.pleos.playground.navi.data.RouteInfo
+import ai.pleos.playground.navi.data.RequestWaypointInfo
 import ai.pleos.playground.navi.data.RouteStartInfo
+import ai.pleos.playground.navi.data.WaypointChangedInfo
 import ai.pleos.playground.navi.helper.NaviHelper
 import ai.pleos.playground.navi.helper.listener.NaviHelperEventListener
 import android.content.Context
@@ -31,6 +40,16 @@ class NaviHelperAdapter(
     private val naviDestination: (Destination) -> Unit = {},
     private val recentDestinations: (List<Destination>) -> Unit = {},
     private val bookmarks: (List<Destination>) -> Unit = {},
+    /** SPEC R13-6: onWaypointChanged(ADD). 콜백 스레드는 보장되지 않는다. */
+    private val waypointAdded: () -> Unit = {},
+    /** SPEC R13-6: addWaypoint 예외. 호출 중 동기로 온다. */
+    private val waypointFailed: () -> Unit = {},
+    /** SPEC R13-9: onRouteCancelled. 경유지 변경 중에도 온다. */
+    private val routeCancelled: () -> Unit = {},
+    /** SPEC R14-7: onTBTInfo(안내가 시작되면 저절로 온다). 콜백 스레드는 보장되지 않는다. */
+    private val turns: (List<TurnGuide>) -> Unit = {},
+    /** SPEC R14-15: onDrivingInfo의 목적지 항목. 목적지 항목이 없으면 null. 콜백 스레드는 보장되지 않는다. */
+    private val destinationRemain: (DrivingRemain?) -> Unit = {},
 ) : NaviPort, LocationPort {
 
     private val navi = NaviHelper(context)
@@ -49,7 +68,16 @@ class NaviHelperAdapter(
             destinationArrived(info.name, info.address)
         }
 
-        override fun onRouteCancelled() = log("SDK onRouteCancelled")
+        override fun onRouteCancelled() {
+            log("SDK onRouteCancelled")
+            routeCancelled()
+        }
+
+        override fun onWaypointChanged(waypointChangedInfo: WaypointChangedInfo) {
+            val w = waypointChangedInfo
+            log("SDK onWaypointChanged cmd=${w.cmdType} index=${w.index} route=${w.routeStartInfo?.name}")
+            if (w.cmdType == WaypointCmdType.ADD) waypointAdded()
+        }
 
         // ---- SPEC R11-21: 목적지 출처. onDestinationChanged는 에뮬레이터에서 오지 않아 쓰지 않는다(docs/sdk-findings.md). ----
         override fun onDestinationInfo(destinationInfo: DestinationInfo) {
@@ -67,6 +95,19 @@ class NaviHelperAdapter(
         override fun onBookmarkInfo(bookmarkInfoList: List<BookmarkInfo>) {
             log("SDK 즐겨찾기 ${bookmarkInfoList.size}개")
             bookmarks(bookmarkInfoList.map { Destination(it.name.orEmpty(), it.address.orEmpty(), it.latitude, it.longitude) })
+        }
+
+        // ---- SPEC R14-7·15: 회전 안내와 남은 시간·거리. 시그니처는 NaviHelper 3.0.5·navi-data 3.0.4 AAR(javap)로 확인했다. ----
+        override fun onTBTInfo(tbtInfoList: List<TBTInfo>) {
+            val first = tbtInfoList.firstOrNull()
+            log("SDK onTBTInfo ${tbtInfoList.size}개 첫 항목 ${first?.type} ${first?.distance}m [${first?.description}]")
+            turns(tbtInfoList.map { TurnGuide(it.type.name, it.distance, it.description) })
+        }
+
+        override fun onDrivingInfo(drivingInfo: DrivingInfo) {
+            val d: DrivingState? = drivingInfo.destination
+            log("SDK onDrivingInfo 목적지 [${d?.name}] ${d?.distance}m ${d?.duration}s, 경유지 ${drivingInfo.waypoints.size}개")
+            destinationRemain(d?.let { DrivingRemain(it.duration, it.distance) })
         }
 
         override fun onCurrentLocationInfo(currentLocationInfo: CurrentLocationInfo) {
@@ -110,6 +151,22 @@ class NaviHelperAdapter(
                 poiSubId = "0",
             )
         ) }.onFailure { log("requestRoute 실패: $it"); routeFailed() }
+    }
+
+    /**
+     * SPEC R13-5: 안내 중인 경로에 경유지를 넣는다. SDK는 이미 있는 경유지 뒤에 붙인다(실측).
+     * 예외는 호출 중 waypointFailed로 바로 알린다. 시그니처는 NaviHelper 3.0.5 AAR(javap)로 확인했다.
+     */
+    override fun addWaypoint(waypoint: Destination) {
+        log("addWaypoint name=[${waypoint.name}]")
+        runCatching {
+            navi.addWaypoint(
+                RequestWaypointInfo(
+                    waypoint.latitude, waypoint.longitude, waypoint.name, WaypointIndex.FIRST,
+                    "", waypoint.address, "0", "",
+                )
+            )
+        }.onFailure { log("addWaypoint 실패: $it"); waypointFailed() }
     }
 
     /** SPEC R11-21: 내비 목적지·최근 목적지·즐겨찾기를 묻는다. 결과는 콜백으로 온다(스레드 보장 없음). */

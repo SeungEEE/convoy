@@ -9,4 +9,7 @@ interface NaviPort {
 
     /** SPEC R3-3, R12-4: [끊기] 때 따라가던 경로를 취소한다. 기본은 아무것도 하지 않는다(그룹 주행 테스트의 가짜용). */
     fun cancelRoute() {}
+
+    /** SPEC R13-5: 지금 안내 중인 경로에 경유지를 넣는다(뒤에 붙음, 최대 2개). 기본은 아무것도 하지 않는다. */
+    fun addWaypoint(waypoint: Destination) {}
 }

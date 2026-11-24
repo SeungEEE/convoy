@@ -10,4 +10,7 @@ interface ConvoyServer {
 
     /** SPEC R8-3: 가족에게 사고 의심 알림을 보낸다. 기본은 아무것도 하지 않는다(그룹 전용 가짜 구현용). */
     fun notifyFamily(report: AccidentReport) {}
+
+    /** SPEC R13-5: 멤버의 차에 승인된 경유지를 전달한다. 받은 차는 자기 NaviPort.addWaypoint를 호출한다. 기본은 아무것도 하지 않는다. */
+    fun sendWaypoint(memberId: String, waypoint: Destination) {}
 }
