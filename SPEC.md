@@ -840,11 +840,13 @@ com.car.convoy
 - [x] 작업 33. `relation`, `detourSeconds`, `redrawIntervalSeconds`, `turnLabel`, `formatDistance` (R14-5·7·8·10, 12행 + 5행 + 5행 + 25행 + 4행)
 - [x] 작업 34. `snapToRoute`와 경로 진행 거리 (R14-4, 4행 + 점 하나·빈 경로)
 - [x] 작업 35. `RoutePort`와 카카오모빌리티 길찾기 어댑터, 시연용 가상 멤버 위치·이동 (R14-1~3). 에뮬레이터에서 수동 확인
-- [ ] 작업 36. 함께 주행 지도 화면: 카카오맵, 마커, 파랑·초록·주황 선, 회전 안내·도착 카드 (R14-6~9, R14-13~17. `memberMapLabel` 10행, `routeSection` 9행 + 점 하나·빈 경로, `turnCardText` 6행, `arrivalCardText` 11행)
-- [ ] 작업 37. 합류 장소 비교 화면과 [경유지로 제안] (R14-10·11·20, R13. `meetingRowText` 18행, `proposalNotice` 8행, `canOpenMeetingCompare` 4행). 에뮬레이터에서 수동 확인
+- [x] 작업 36. 함께 주행 지도 화면: 카카오맵, 마커, 파랑·초록·주황 선, 회전 안내·도착 카드 (R14-6~9, R14-13~17. `memberMapLabel` 10행, `routeSection` 9행 + 점 하나·빈 경로, `turnCardText` 6행, `arrivalCardText` 11행)
+- [x] 작업 37. 합류 장소 비교 화면과 [경유지로 제안] (R14-10·11·20, R13. `meetingRowText` 18행, `proposalNotice` 8행, `canOpenMeetingCompare` 4행). 에뮬레이터에서 수동 확인
 - [x] 작업 38. 작업 40으로 대체 (진행은 작업 40에서 추적)
-- [ ] 작업 39. 시안 배치: 주행 화면(지도 전체, 떠 있는 카드)과 그룹 화면, 두 화면 사이 이동, 정보 카드, [내 위치] (R14-9·16·18·19. `driveEntryScreen` 2행, `infoCardSections` 13행, `canPerform` 경유지 다시 보내기 2행). 에뮬레이터에서 수동 확인
-- [ ] 작업 40. 첫 화면 탭: [친구 지도] [그룹] [가족] [설정], 친구 지도(카카오맵, 친구 마커, 함께 출발 카드, [내 위치]), 화면 전이, "연결된 사람" → "친구" 표기 (R2-4·5, R4-5, R9-1·5, R11-20, R12, R14-12. `screenAfter` 9행, `friendMarkerKind` 6행, `friendLocateEnabled` 6행). 에뮬레이터에서 수동 확인
+- [x] 작업 39. 시안 배치: 주행 화면(지도 전체, 떠 있는 카드)과 그룹 화면, 두 화면 사이 이동, 정보 카드, [내 위치] (R14-9·16·18·19. `driveEntryScreen` 2행, `infoCardSections` 13행, `canPerform` 경유지 다시 보내기 2행). 에뮬레이터에서 수동 확인
+- [x] 작업 40. 첫 화면 탭: [친구 지도] [그룹] [가족] [설정], 친구 지도(카카오맵, 친구 마커, 함께 출발 카드, [내 위치]), 화면 전이, "연결된 사람" → "친구" 표기 (R2-4·5, R4-5, R9-1·5, R11-20, R12, R14-12. `screenAfter` 9행, `friendMarkerKind` 6행, `friendLocateEnabled` 6행). 에뮬레이터에서 수동 확인
+
+작업 36·37·39·40의 에뮬레이터 확인은 Windows x86_64 Pleos 에뮬레이터에서 했다. 이 이미지에서는 카카오맵 네이티브 라이브러리를 쓸 수 없어(`docs/sdk-findings.md` "Windows 에뮬레이터 ABI"), 지도 위 그리기(경로선, 마커, 핀, 카메라 맞춤, [내 위치] 이동)는 화면으로 확인하지 못했다. 지도 값을 만드는 규칙은 단위 테스트로, 그 밖의 화면·흐름은 에뮬레이터로 확인했다.
 
 ## 4장. P1 (2차 PT 전, 이번 명세에 포함하지 않음)
 방향지시등 공유, 근접·이탈 알림, 휴게·충전 조율(배터리 `getEvBatteryStateOfCharge`), 주행 상태 공유, 친구별 숨기기. P0 테스트가 모두 초록이 된 뒤 같은 방식으로 명세를 추가한다.
