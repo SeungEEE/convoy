@@ -23,7 +23,7 @@
   KAKAO_NATIVE_APP_KEY=<카카오 네이티브 앱 키>
   KAKAO_REST_API_KEY=<카카오 REST API 키>
   ```
-  앱이 길찾기를 직접 부르는 것(APK에 REST 키가 들어감)은 시연용입니다. 실서비스에서는 서버가 부릅니다.
+  키를 넣고 빌드하면 REST 키가 APK 안에 들어갑니다. 앱이 길찾기를 직접 부르는 것은 시연용이고, 실서비스에서는 서버가 부릅니다. 그래서 제출용 APK에는 키를 넣지 않았습니다.
 
 ### 빌드와 설치
 ```bash
@@ -89,8 +89,9 @@ adb -s emulator-5554 shell am start -n com.car.convoy/.MainActivity --es demo <�
 | 앱 SDK 수준 | minSdk 28, targetSdk 36 |
 
 ## APK
-- 위치: [`apk/KIN_Convoy_release.apk`](apk/KIN_Convoy_release.apk) (서명된 release 버전, 약 31MB)
-  - 1차 제출(`v1-submit`) 때 빌드한 것이라 탭·지도·경유지·합류 비교는 들어 있지 않습니다. 지금 기능은 위 "빌드와 설치"대로 debug 빌드로 확인합니다.
+- 위치: [`apk/KIN_Convoy_release.apk`](apk/KIN_Convoy_release.apk) (서명된 release 버전, 약 70MB. 카카오맵 SDK 네이티브 라이브러리가 들어 있어 1차보다 큽니다)
+  - 탭·지도·경유지·합류 비교까지 들어 있습니다.
+  - **카카오 키는 넣지 않고 빌드했습니다.** 그래서 이 APK에서는 지도와 길찾기(함께 주행 지도, 일행 앞뒤 거리, 합류 비교 시간)가 "지도를 쓰려면 카카오 키가 필요해요"로 나오고, 그 밖의 기능은 그대로 동작합니다. 지도까지 보려면 `local.properties`에 키를 넣고 위 "빌드와 설치"대로 직접 빌드합니다.
 - 설치: `adb -s emulator-5554 install -r apk/KIN_Convoy_release.apk`
   - debug 빌드가 설치되어 있으면 서명이 달라 설치가 실패합니다. 먼저 `adb -s emulator-5554 uninstall com.car.convoy`를 실행합니다.
 
