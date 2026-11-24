@@ -28,6 +28,11 @@ data class MeetingRow(
  */
 class MeetingCompareController(
     private val routes: RoutePort,
+    /**
+     * 아직 시작하지 않은 이전 길찾기 요청을 버린다(작업 37 Codex 리뷰). [seq]는 늦은 응답이 상태를 덮는 것만 막고 요청 자체는 막지 못하므로,
+     * 다른 후보를 고르거나 닫을 때 대기열을 비워 쿼터와 대기 시간을 아낀다. 버려진 요청의 응답은 오지 않는다.
+     */
+    private val dropQueued: () -> Unit = {},
     private val onChange: () -> Unit = {},
 ) {
     private enum class Kind { TO_CANDIDATE, DIRECT, VIA }
@@ -82,6 +87,7 @@ class MeetingCompareController(
         nowMillis: Long,
     ): Boolean {
         if (candidate == this.candidate && entries.any { it.pending.isNotEmpty() }) return false
+        dropQueued()
         val mySeq = ++seq
         this.candidate = candidate
         selectedAt = nowMillis
@@ -117,6 +123,7 @@ class MeetingCompareController(
 
     /** 비교 화면을 닫을 때. 진행 중인 응답은 버린다. */
     fun clear() {
+        dropQueued()
         seq++
         candidate = null
         selectedAt = null

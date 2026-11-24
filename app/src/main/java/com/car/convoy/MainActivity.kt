@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import com.car.convoy.data.AccidentController
 import com.car.convoy.data.Cancellable
@@ -215,7 +216,18 @@ class MainActivity : ComponentActivity() {
     private var meetingLedger = MapCameraLedger<CameraPosition>()
     /** 후보를 고른 순간의 멤버 위치(마커). */
     private var meetingStarts: List<Pair<String, GeoPoint?>> = emptyList()
-    private val meeting by lazy { MeetingCompareController(routes) { refresh() } }
+    /**
+     * 합류 비교 전용 길찾기 실행기(작업 37 Codex 리뷰). 그룹 경로 요청(routeIo)과 대기열을 나눠, 버린 비교 요청이 그룹 경로를 막지 않게 한다.
+     * 다른 후보를 고르거나 닫으면 아직 시작하지 않은 요청은 대기열에서 버린다.
+     */
+    private val meetingIoDelegate = lazy {
+        java.util.concurrent.ThreadPoolExecutor(2, 2, 0L, java.util.concurrent.TimeUnit.MILLISECONDS, java.util.concurrent.LinkedBlockingQueue())
+    }
+    private val meetingIo by meetingIoDelegate
+    private val meeting by lazy {
+        val meetingRoutes = KakaoRouteAdapter(BuildConfig.KAKAO_REST_API_KEY, meetingIo, { r -> scheduler.post { r.run() } }, ::log)
+        MeetingCompareController(meetingRoutes, dropQueued = { meetingIo.queue.clear() }) { refresh() }
+    }
 
     // ---- SPEC R14-6~8·13~17, 작업 36: 함께 주행 지도 화면 ----
     private val mapUi = mutableStateOf<GroupMapUi?>(null)
@@ -343,6 +355,8 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             ConvoyTheme {
+                // SPEC R14-20: 비교 화면을 덮었다 걷어도 그룹 화면의 스크롤 등 화면 상태가 그대로 남게 한다(작업 37 Codex 리뷰).
+                val groupState = rememberSaveableStateHolder()
                 val accidentUi = accidentModel.value
                 val familyChip: @Composable () -> Unit = { homeModel.value?.let { h -> FamilyChip(h.familyHeader) } }
                 Box {
@@ -368,7 +382,7 @@ class MainActivity : ComponentActivity() {
                             headerExtra = familyChip,
                         )
                     } else if (screen.value == Screen.DRIVE && group != null) {
-                        GroupScreen(
+                        groupState.SaveableStateProvider("group") { GroupScreen(
                             model = group,
                             onChooseDestination = ::chooseDestination,
                             onRetry = { drive?.retryMyRoute(); refresh() },
@@ -401,7 +415,7 @@ class MainActivity : ComponentActivity() {
                             // SPEC R14-20, 작업 37: 합류 장소 비교
                             onOpenCompare = ::openMeeting,
                             canOpenCompare = drive?.let { canOpenMeetingCompare(it.session.status, gear) } ?: false,
-                        )
+                        ) }
                     } else {
                         homeModel.value?.let {
                             HomeScreen(
@@ -496,6 +510,7 @@ class MainActivity : ComponentActivity() {
         friendTicker?.cancel()
         friendTicker = null
         if (routeIoDelegate.isInitialized()) routeIo.shutdownNow()
+        if (meetingIoDelegate.isInitialized()) meetingIo.shutdownNow()
         vehicle.stop()
         navi.stop()
         super.onDestroy()
