@@ -155,7 +155,7 @@ internal fun ViewTabs(selected: DriveView, memberCount: Int, onShowView: (DriveV
 }
 
 @Composable
-private fun ViewTab(label: String, icon: ConvoyIcon?, selected: Boolean, onClick: () -> Unit) {
+internal fun ViewTab(label: String, icon: ConvoyIcon?, selected: Boolean, onClick: () -> Unit) {
     val shape = RoundedCornerShape(999.dp)
     val fg = if (selected) Color.White else Palette.Ink
     Row(
@@ -175,7 +175,7 @@ private fun ViewTab(label: String, icon: ConvoyIcon?, selected: Boolean, onClick
 
 /** SPEC R14-16 [내 위치]: 누를 때만 내 위치를 가운데로 옮긴다. 이번 세션에서 위치를 못 받았거나 지도를 못 그리면 잠긴다. */
 @Composable
-private fun LocateButton(enabled: Boolean, onClick: () -> Unit) {
+internal fun LocateButton(enabled: Boolean, onClick: () -> Unit) {
     Box(
         Modifier.size(88.dp).shadow(6.dp, CircleShape).background(Palette.Card, CircleShape).clip(CircleShape)
             .clickable(enabled = enabled, onClick = onClick),

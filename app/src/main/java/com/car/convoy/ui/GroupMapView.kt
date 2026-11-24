@@ -179,13 +179,18 @@ private fun KakaoMapLayer(
             }
             // R14-17: 새 길찾기 결과가 온 직후 한 번만 맞춘다. 사용자가 움직인 뒤에도 새 경로면 다시 맞춘다.
             // 같은 경로로 지도가 다시 만들어졌으면 맞추지 않고 떠날 때의 자리로 되돌린다(R14-8, Codex 리뷰).
+            // R14-12: 친구 지도는 경로가 없어 마커가 처음 생길 때 한 번 마커에 맞춘다(같은 장부, 번호는 그대로).
             val route = ui?.lines?.firstOrNull { it.color == LineColor.BLUE }?.points
+            val markers = ui?.markers.orEmpty().map { it.position }
+            val fitTarget = route?.let { it + markers } ?: markers.takeIf { ui?.fitMarkers == true && it.isNotEmpty() }
             val wasFresh = fresh[0]
             fresh[0] = false
-            when (ledger.next(routeVersion, hasRoute = route != null, fresh = wasFresh)) {
+            when (ledger.next(routeVersion, hasRoute = fitTarget != null, fresh = wasFresh)) {
                 CameraAction.FIT_ROUTE -> {
-                    val points = (route.orEmpty() + ui?.markers.orEmpty().map { it.position }).map { LatLng.from(it.latitude, it.longitude) }
-                    map.moveCamera(CameraUpdateFactory.fitMapPoints(points.toTypedArray(), FIT_PADDING))
+                    val points = fitTarget.orEmpty().map { LatLng.from(it.latitude, it.longitude) }
+                    // 마커가 하나면 확대 수준은 그대로 두고 그 마커를 가운데로(R14-12).
+                    if (points.size == 1) map.moveCamera(CameraUpdateFactory.newCenterPosition(points[0]))
+                    else map.moveCamera(CameraUpdateFactory.fitMapPoints(points.toTypedArray(), FIT_PADDING))
                 }
                 CameraAction.RESTORE -> ledger.saved?.let { map.moveCamera(CameraUpdateFactory.newCameraPosition(it)) }
                 CameraAction.NONE -> Unit
@@ -231,6 +236,7 @@ private fun draw(map: KakaoMap, ui: GroupMapUi?) {
             MarkerTone.AHEAD -> SECTION_GREEN
             MarkerTone.BEHIND -> SECTION_ORANGE
             MarkerTone.GRAY -> MARKER_GRAY
+            MarkerTone.GROUP -> Palette.BrandNavy
         }
         labels.addLabel(
             LabelOptions.from(LatLng.from(m.position.latitude, m.position.longitude))

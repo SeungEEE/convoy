@@ -16,8 +16,8 @@ import java.time.ZoneId
 /** SPEC R14-6·7: 내 경로 전체는 파랑, 앞 멤버까지는 초록, 뒤 멤버부터 나까지는 주황. */
 enum class LineColor { BLUE, GREEN, ORANGE }
 
-/** SPEC R14-6: 마커 색. 나란히·다른 길·위치 오래됨·내 위치 모름은 회색(R14-16). */
-enum class MarkerTone { ME, AHEAD, BEHIND, GRAY }
+/** SPEC R14-6: 마커 색. 나란히·다른 길·위치 오래됨·내 위치 모름은 회색(R14-16). [GROUP]은 친구 지도의 그룹 멤버(남색, R14-12). */
+enum class MarkerTone { ME, AHEAD, BEHIND, GRAY, GROUP }
 
 enum class PinKind { DESTINATION, WAYPOINT }
 
@@ -44,6 +44,8 @@ data class GroupMapUi(
     val meUnknown: Boolean = false,
     /** SPEC R14-16 [내 위치]: 마지막으로 받은 내 위치. ME_UNKNOWN이어도 있다. */
     val myPoint: GeoPoint? = null,
+    /** SPEC R14-12: 경로가 없을 때 카메라를 마커에 맞춘다(친구 지도). 맞추는 것은 처음 한 번뿐이다(카메라 장부). */
+    val fitMarkers: Boolean = false,
 )
 
 /**
